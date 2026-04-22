@@ -1,21 +1,22 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
-    QMessageBox,
+    QFileDialog,
     QFormLayout,
     QHBoxLayout,
     QLabel,
     QLineEdit,
+    QMessageBox,
     QPushButton,
+    QScrollArea,
     QSpinBox,
     QVBoxLayout,
     QWidget,
-    QFileDialog,
 )
 
-from ui.components.common import Card
+from ui.components.common import Card, PageHeader
 from ui.theme import apply_theme
 
 
@@ -26,19 +27,32 @@ class SettingsPage(QWidget):
         self.app = app
 
         root = QVBoxLayout(self)
-        title = QLabel("Settings")
-        title.setStyleSheet("font-size:20px;font-weight:700;")
-        root.addWidget(title)
+        root.setContentsMargins(0, 0, 0, 0)
+        root.setSpacing(12)
+        root.addWidget(PageHeader("Settings", "Customize folders, appearance, relay behavior, and account preferences."))
+
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QScrollArea.NoFrame)
+        root.addWidget(scroll, 1)
+
+        container = QWidget()
+        container_layout = QVBoxLayout(container)
+        container_layout.setContentsMargins(0, 0, 0, 0)
+        container_layout.setSpacing(12)
+        scroll.setWidget(container)
+
+        settings = self.context.settings_service.get()
 
         card = Card("General")
         form = QFormLayout()
-
-        settings = self.context.settings_service.get()
+        form.setVerticalSpacing(12)
+        form.setHorizontalSpacing(14)
 
         self.download_folder = QLineEdit(settings.default_download_folder)
         browse_btn = QPushButton("Browse")
         folder_row = QHBoxLayout()
-        folder_row.addWidget(self.download_folder)
+        folder_row.addWidget(self.download_folder, 1)
         folder_row.addWidget(browse_btn)
         folder_widget = QWidget()
         folder_widget.setLayout(folder_row)
@@ -67,7 +81,7 @@ class SettingsPage(QWidget):
         binary_btn = QPushButton("Browse Binary")
         delete_binary_btn = QPushButton("Delete Croc Binary")
         binary_row = QHBoxLayout()
-        binary_row.addWidget(self.binary_path)
+        binary_row.addWidget(self.binary_path, 1)
         binary_row.addWidget(binary_btn)
         binary_row.addWidget(delete_binary_btn)
         binary_widget = QWidget()
@@ -97,7 +111,7 @@ class SettingsPage(QWidget):
         save_btn.setObjectName("PrimaryButton")
         card.layout.addLayout(form)
         card.layout.addWidget(save_btn)
-        root.addWidget(card)
+        container_layout.addWidget(card)
 
         account_card = Card("Account")
         self.current_profile_label = QLabel()
@@ -110,8 +124,8 @@ class SettingsPage(QWidget):
         account_card.layout.addWidget(self.switch_profile_btn)
         account_card.layout.addWidget(self.remove_profile_btn)
         account_card.layout.addWidget(self.guest_mode_btn)
-        root.addWidget(account_card)
-        root.addStretch(1)
+        container_layout.addWidget(account_card)
+        container_layout.addStretch(1)
 
         browse_btn.clicked.connect(self.pick_folder)
         binary_btn.clicked.connect(self.pick_binary)

@@ -2,10 +2,26 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from PySide6.QtCore import Qt
 from PySide6.QtGui import QIcon
 from PySide6.QtSvgWidgets import QSvgWidget
-from PySide6.QtWidgets import QApplication, QFrame, QHBoxLayout, QLabel, QListWidget, QListWidgetItem, QPushButton, QStackedWidget, QVBoxLayout, QWidget, QMainWindow
+from PySide6.QtWidgets import (
+    QAbstractItemView,
+    QApplication,
+    QFrame,
+    QHBoxLayout,
+    QLabel,
+    QListWidget,
+    QListWidgetItem,
+    QMainWindow,
+    QPushButton,
+    QStackedWidget,
+    QStyle,
+    QVBoxLayout,
+    QWidget,
+)
 
+from ui.components.toast_popup import ToastPopup
 from ui.pages.about_page import AboutPage
 from ui.pages.debug_page import DebugPage
 from ui.pages.devices_page import DevicesPage
@@ -15,7 +31,6 @@ from ui.pages.receive_page import ReceivePage
 from ui.pages.send_page import SendPage
 from ui.pages.settings_page import SettingsPage
 from ui.pages.transfers_page import TransfersPage
-from ui.components.toast_popup import ToastPopup
 
 
 class MainWindow(QMainWindow):
@@ -25,18 +40,19 @@ class MainWindow(QMainWindow):
         self.logo_path = Path(__file__).resolve().parents[1] / "assets" / "crocdrop_lock_logo.svg"
         self.setWindowTitle("CrocDrop")
         self.resize(1320, 860)
+        self.setMinimumSize(1060, 720)
         if self.logo_path.exists():
             self.setWindowIcon(QIcon(str(self.logo_path)))
 
         root = QWidget()
         self.setCentralWidget(root)
-        layout = QHBoxLayout(root)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(0)
+        shell_layout = QHBoxLayout(root)
+        shell_layout.setContentsMargins(0, 0, 0, 0)
+        shell_layout.setSpacing(0)
 
         sidebar = QFrame()
         sidebar.setObjectName("Sidebar")
-        sidebar.setFixedWidth(220)
+        sidebar.setFixedWidth(236)
         side_layout = QVBoxLayout(sidebar)
         side_layout.setContentsMargins(14, 14, 14, 14)
         side_layout.setSpacing(10)
@@ -53,49 +69,52 @@ class MainWindow(QMainWindow):
         brand_text = QVBoxLayout()
         brand_text.setContentsMargins(0, 0, 0, 0)
         brand_text.setSpacing(2)
-
         brand = QLabel("CrocDrop")
         brand.setObjectName("BrandTitle")
         tagline = QLabel("Lock. Send. Done.")
         tagline.setProperty("role", "muted")
-
         brand_text.addWidget(brand)
         brand_text.addWidget(tagline)
-        brand_text.addStretch(1)
 
         brand_layout.addWidget(logo_widget)
         brand_layout.addLayout(brand_text, 1)
 
         mode = QLabel("Debug Peer Instance" if debug_peer else "Primary Instance")
         mode.setProperty("role", "muted")
-        mode.setStyleSheet("padding-left:8px;padding-bottom:6px;")
+        mode.setContentsMargins(8, 0, 0, 2)
 
         self.nav = QListWidget()
         self.nav.setObjectName("NavList")
-        for item in ["Home", "Send", "Receive", "Transfers", "Devices", "Logs", "Settings", "Debug", "About"]:
-            self.nav.addItem(QListWidgetItem(item))
+        self.nav.setVerticalScrollMode(QAbstractItemView.ScrollMode.ScrollPerPixel)
+        self.nav.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.nav.setUniformItemSizes(True)
+        self._build_nav_items()
 
+        # Sidebar bug fix: the previous layout added a bottom stretch, which consumed free height and kept
+        # navigation items cramped near the top. Giving nav stretch=1 lets it use full height and scroll only if needed.
         side_layout.addWidget(brand_shell)
         side_layout.addWidget(mode)
-        side_layout.addWidget(self.nav)
-        side_layout.addStretch(1)
+        side_layout.addWidget(self.nav, 1)
 
         panel = QFrame()
         panel.setObjectName("MainPanel")
         panel_layout = QVBoxLayout(panel)
         panel_layout.setContentsMargins(18, 14, 18, 14)
+        panel_layout.setSpacing(12)
 
         header = QFrame()
-        header.setObjectName("Card")
+        header.setObjectName("HeaderBar")
         header_layout = QHBoxLayout(header)
-        title = QLabel("Context")
-        title.setStyleSheet("font-size:16px;font-weight:700;")
+        header_layout.setContentsMargins(14, 10, 14, 10)
+        header_layout.setSpacing(10)
+        self.header_title = QLabel("Home")
+        self.header_title.setObjectName("HeaderTitle")
         self.context_label = QLabel("Ready")
-        self.context_label.setProperty("role", "muted")
+        self.context_label.setObjectName("HeaderStatus")
 
         check_btn = QPushButton("Check Croc")
         check_btn.clicked.connect(self.check_croc)
-        header_layout.addWidget(title)
+        header_layout.addWidget(self.header_title)
         header_layout.addStretch(1)
         header_layout.addWidget(self.context_label)
         header_layout.addWidget(check_btn)
@@ -127,8 +146,8 @@ class MainWindow(QMainWindow):
         panel_layout.addWidget(header)
         panel_layout.addWidget(self.pages, 1)
 
-        layout.addWidget(sidebar)
-        layout.addWidget(panel, 1)
+        shell_layout.addWidget(sidebar)
+        shell_layout.addWidget(panel, 1)
 
         self.nav.currentRowChanged.connect(self.pages.setCurrentIndex)
         self.nav.currentRowChanged.connect(self.on_page_changed)
@@ -139,6 +158,23 @@ class MainWindow(QMainWindow):
         self.nav.setCurrentRow(0)
         self.check_croc()
 
+    def _build_nav_items(self) -> None:
+        style = QApplication.style()
+        items: list[tuple[str, QStyle.StandardPixmap]] = [
+            ("Home", QStyle.StandardPixmap.SP_DesktopIcon),
+            ("Send", QStyle.StandardPixmap.SP_ArrowUp),
+            ("Receive", QStyle.StandardPixmap.SP_ArrowDown),
+            ("Transfers", QStyle.StandardPixmap.SP_FileDialogDetailedView),
+            ("Devices", QStyle.StandardPixmap.SP_ComputerIcon),
+            ("Logs", QStyle.StandardPixmap.SP_FileIcon),
+            ("Settings", QStyle.StandardPixmap.SP_FileDialogContentsView),
+            ("Debug", QStyle.StandardPixmap.SP_MessageBoxInformation),
+            ("About", QStyle.StandardPixmap.SP_TitleBarMenuButton),
+        ]
+        for label, icon_kind in items:
+            item = QListWidgetItem(style.standardIcon(icon_kind), label)
+            self.nav.addItem(item)
+
     def navigate_to(self, page_name: str):
         mapping = {self.nav.item(i).text(): i for i in range(self.nav.count())}
         if page_name in mapping:
@@ -146,7 +182,8 @@ class MainWindow(QMainWindow):
 
     def on_page_changed(self, index: int):
         name = self.nav.item(index).text() if index >= 0 else ""
-        self.context_label.setText(name)
+        self.header_title.setText(name or "CrocDrop")
+        self.context_label.setText(name or "Ready")
         if name == "Home":
             self.home_page.refresh()
         elif name == "Transfers":

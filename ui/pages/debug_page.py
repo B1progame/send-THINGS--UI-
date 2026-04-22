@@ -1,10 +1,10 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 from pathlib import Path
 
-from PySide6.QtWidgets import QFileDialog, QHBoxLayout, QLabel, QPushButton, QSpinBox, QTextEdit, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QFileDialog, QHBoxLayout, QLabel, QPlainTextEdit, QPushButton, QSpinBox, QVBoxLayout, QWidget
 
-from ui.components.common import Card
+from ui.components.common import Card, PageHeader
 
 
 class DebugPage(QWidget):
@@ -13,9 +13,9 @@ class DebugPage(QWidget):
         self.context = context
 
         root = QVBoxLayout(self)
-        title = QLabel("Debug")
-        title.setStyleSheet("font-size:20px;font-weight:700;")
-        root.addWidget(title)
+        root.setContentsMargins(0, 0, 0, 0)
+        root.setSpacing(12)
+        root.addWidget(PageHeader("Debug", "Run self-tests, inspect backend health, and export diagnostics."))
 
         controls = Card("Self-Test and Tools")
         self.size_spin = QSpinBox()
@@ -25,6 +25,7 @@ class DebugPage(QWidget):
         row = QHBoxLayout()
         row.addWidget(QLabel("Dummy size (MB):"))
         row.addWidget(self.size_spin)
+        row.addStretch(1)
 
         self.selftest_btn = QPushButton("Run Self-Test")
         self.selftest_btn.setObjectName("PrimaryButton")
@@ -39,12 +40,13 @@ class DebugPage(QWidget):
         controls.layout.addWidget(self.bundle_btn)
 
         logs = Card("Debug Output")
-        self.output = QTextEdit()
+        self.output = QPlainTextEdit()
         self.output.setReadOnly(True)
+        self.output.document().setMaximumBlockCount(1500)
         logs.layout.addWidget(self.output)
 
         root.addWidget(controls)
-        root.addWidget(logs)
+        root.addWidget(logs, 1)
 
         self.selftest_btn.clicked.connect(self.run_self_test)
         self.launch_dual_btn.clicked.connect(self.launch_second)
@@ -55,16 +57,16 @@ class DebugPage(QWidget):
         self.context.debug_service.self_test_finished.connect(self.on_self_test_finished)
 
     def run_self_test(self):
-        self.output.append("Starting self-test...")
+        self.output.appendPlainText("Starting self-test...")
         self.context.debug_service.run_self_test(size_mb=self.size_spin.value())
 
     def launch_second(self):
         self.context.debug_service.launch_second_instance()
-        self.output.append("Second instance launched with --debug-peer")
+        self.output.appendPlainText("Second instance launched with --debug-peer")
 
     def health_check(self):
         diag = self.context.debug_service.backend_health()
-        self.output.append(str(diag))
+        self.output.appendPlainText(str(diag))
 
     def save_bundle(self):
         path, _ = QFileDialog.getSaveFileName(self, "Save diagnostics", "crocdrop_diagnostics.txt", "Text Files (*.txt)")
@@ -76,10 +78,10 @@ class DebugPage(QWidget):
         for r in records:
             lines.append(str(r.to_dict()))
         Path(path).write_text("\n".join(lines), encoding="utf-8")
-        self.output.append(f"Diagnostics saved to {path}")
+        self.output.appendPlainText(f"Diagnostics saved to {path}")
 
     def on_self_test_progress(self, msg: str):
-        self.output.append(msg)
+        self.output.appendPlainText(msg)
 
     def on_self_test_finished(self, ok: bool, msg: str):
-        self.output.append(("PASS" if ok else "FAIL") + " | " + msg)
+        self.output.appendPlainText(("PASS" if ok else "FAIL") + " | " + msg)

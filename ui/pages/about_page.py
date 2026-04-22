@@ -1,20 +1,20 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
-from PySide6.QtWidgets import QLabel, QTextEdit, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QPlainTextEdit, QVBoxLayout, QWidget
 
-from ui.components.common import Card
+from ui.components.common import Card, PageHeader
 
 
 class AboutPage(QWidget):
     def __init__(self):
         super().__init__()
         root = QVBoxLayout(self)
-        title = QLabel("About CrocDrop")
-        title.setStyleSheet("font-size:20px;font-weight:700;")
-        root.addWidget(title)
+        root.setContentsMargins(0, 0, 0, 0)
+        root.setSpacing(12)
+        root.addWidget(PageHeader("About CrocDrop", "A Windows-first transfer shell for the official croc backend."))
 
         card = Card("Project")
-        text = QTextEdit()
+        text = QPlainTextEdit()
         text.setReadOnly(True)
         text.setPlainText(
             "CrocDrop is a Windows-first desktop GUI for the official croc transfer tool.\n\n"
@@ -24,5 +24,4 @@ class AboutPage(QWidget):
             "CrocDrop does not invent cryptographic guarantees. It relies on croc's protocol and behavior."
         )
         card.layout.addWidget(text)
-        root.addWidget(card)
-        root.addStretch(1)
+        root.addWidget(card, 1)

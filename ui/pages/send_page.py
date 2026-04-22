@@ -2,9 +2,9 @@ from __future__ import annotations
 
 from PySide6.QtCore import QTimer
 from PySide6.QtGui import QGuiApplication
-from PySide6.QtWidgets import QFileDialog, QHBoxLayout, QLabel, QLineEdit, QMessageBox, QPlainTextEdit, QProgressBar, QPushButton, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QFileDialog, QHBoxLayout, QLineEdit, QMessageBox, QPlainTextEdit, QProgressBar, QPushButton, QVBoxLayout, QWidget
 
-from ui.components.common import Card, DropList
+from ui.components.common import Card, DropList, PageHeader
 
 
 class SendPage(QWidget):
@@ -18,9 +18,9 @@ class SendPage(QWidget):
         self.output_flush_timer.timeout.connect(self.flush_output)
 
         root = QVBoxLayout(self)
-        title = QLabel("Send")
-        title.setStyleSheet("font-size:20px;font-weight:700;")
-        root.addWidget(title)
+        root.setContentsMargins(0, 0, 0, 0)
+        root.setSpacing(12)
+        root.addWidget(PageHeader("Send", "Drag files/folders, share code, and stream transfer output in real time."))
 
         picker = Card("Files and Folders")
         self.drop = DropList()
@@ -33,23 +33,28 @@ class SendPage(QWidget):
         actions.addWidget(btn_file)
         actions.addWidget(btn_folder)
         actions.addWidget(btn_remove)
+        actions.addStretch(1)
         picker.layout.addLayout(actions)
 
+        code_card = Card("Generated Code")
         self.code = QLineEdit()
         self.code.setReadOnly(True)
         self.code.setPlaceholderText("Code phrase will appear after start")
-
-        controls = QHBoxLayout()
+        code_row = QHBoxLayout()
         self.start_btn = QPushButton("Start Send")
         self.start_btn.setObjectName("PrimaryButton")
         copy_btn = QPushButton("Copy Code")
-        controls.addWidget(self.start_btn)
-        controls.addWidget(copy_btn)
+        code_row.addWidget(self.start_btn)
+        code_row.addWidget(copy_btn)
+        code_row.addStretch(1)
 
         self.progress = QProgressBar()
         self.progress.setRange(0, 100)
         self.progress.setValue(0)
         self.progress.setFormat("Progress: %p%")
+        code_card.layout.addWidget(self.code)
+        code_card.layout.addLayout(code_row)
+        code_card.layout.addWidget(self.progress)
 
         runtime = Card("Live Output")
         self.output = QPlainTextEdit()
@@ -58,11 +63,8 @@ class SendPage(QWidget):
         runtime.layout.addWidget(self.output)
 
         root.addWidget(picker)
-        root.addWidget(QLabel("Generated Code"))
-        root.addWidget(self.code)
-        root.addLayout(controls)
-        root.addWidget(self.progress)
-        root.addWidget(runtime)
+        root.addWidget(code_card)
+        root.addWidget(runtime, 1)
 
         btn_file.clicked.connect(self.pick_files)
         btn_folder.clicked.connect(self.pick_folder)
