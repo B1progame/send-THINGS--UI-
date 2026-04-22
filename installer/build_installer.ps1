@@ -14,9 +14,12 @@ if (-not (Test-Path ".\.venv\Scripts\python.exe")) {
 Write-Host "[CrocDrop] Preparing installer icon from assets/crocdrop_lock_logo.svg..."
 $iconGenScript = @'
 from pathlib import Path
+import io
+import struct
 
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QGuiApplication, QPainter, QPixmap
+from PySide6.QtCore import QBuffer, QByteArray
+from PySide6.QtGui import QGuiApplication, QPainter, QPixmap, QIcon
 from PySide6.QtSvg import QSvgRenderer
 
 repo = Path.cwd()
@@ -27,14 +30,44 @@ if not svg_path.exists():
 
 app = QGuiApplication([])
 renderer = QSvgRenderer(str(svg_path))
-pix = QPixmap(256, 256)
-pix.fill(Qt.GlobalColor.transparent)
-painter = QPainter(pix)
-renderer.render(painter)
-painter.end()
+sizes = [16, 24, 32, 48, 64, 128, 256]
+icon = QIcon()
+png_blobs = []
+for size in sizes:
+    pix = QPixmap(size, size)
+    pix.fill(Qt.GlobalColor.transparent)
+    painter = QPainter(pix)
+    renderer.render(painter)
+    painter.end()
+    icon.addPixmap(pix)
+    ba = QByteArray()
+    buffer = QBuffer(ba)
+    buffer.open(QBuffer.OpenModeFlag.WriteOnly)
+    ok = pix.save(buffer, "PNG")
+    buffer.close()
+    if not ok:
+        raise SystemExit(f"Failed to render PNG for size {size}")
+    png_blobs.append(bytes(ba))
+
+# Write ICO container with PNG frames (multi-size icon).
+count = len(sizes)
+header = struct.pack("<HHH", 0, 1, count)
+entries = []
+offset = 6 + (16 * count)
+for size, blob in zip(sizes, png_blobs):
+    w = 0 if size >= 256 else size
+    h = 0 if size >= 256 else size
+    entry = struct.pack("<BBBBHHII", w, h, 0, 0, 1, 32, len(blob), offset)
+    entries.append(entry)
+    offset += len(blob)
+
 ico_path.parent.mkdir(parents=True, exist_ok=True)
-if not pix.save(str(ico_path), "ICO"):
-    raise SystemExit(f"Failed to write ICO: {ico_path}")
+with ico_path.open("wb") as f:
+    f.write(header)
+    for entry in entries:
+        f.write(entry)
+    for blob in png_blobs:
+        f.write(blob)
 print(f"Generated icon: {ico_path}")
 '@
 $tempScript = Join-Path $env:TEMP "crocdrop_generate_icon.py"

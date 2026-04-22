@@ -1,15 +1,21 @@
 ﻿from __future__ import annotations
 
 from pathlib import Path
+import shutil
 
 from platformdirs import PlatformDirs
 
 APP_NAME = "CrocDrop"
-APP_AUTHOR = "CrocDrop"
+APP_AUTHOR = False
 
 
 def get_dirs() -> PlatformDirs:
     return PlatformDirs(APP_NAME, APP_AUTHOR, roaming=True)
+
+
+def legacy_dirs() -> PlatformDirs:
+    # Legacy location used appauthor="CrocDrop", which produced ...\CrocDrop\CrocDrop\...
+    return PlatformDirs(APP_NAME, "CrocDrop", roaming=True)
 
 
 def ensure_path(path: Path) -> Path:
@@ -18,7 +24,17 @@ def ensure_path(path: Path) -> Path:
 
 
 def app_data_dir() -> Path:
-    return ensure_path(Path(get_dirs().user_data_dir))
+    new_path = ensure_path(Path(get_dirs().user_data_dir))
+    old_path = Path(legacy_dirs().user_data_dir)
+    if old_path.exists():
+        try:
+            # Migrate once if new path appears empty.
+            has_any_file = any(new_path.rglob("*"))
+            if not has_any_file:
+                shutil.copytree(old_path, new_path, dirs_exist_ok=True)
+        except Exception:
+            pass
+    return new_path
 
 
 def app_cache_dir() -> Path:
