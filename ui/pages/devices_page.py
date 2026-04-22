@@ -13,18 +13,18 @@ class DevicesPage(QWidget):
         root = QVBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
         root.setSpacing(12)
-        root.addWidget(PageHeader("Devices", "Manage remembered aliases for peers and session labels."))
+        root.addWidget(PageHeader("Devices", "Manage app-level remembered peers from transfer codes (not a cryptographic identity guarantee)."))
 
-        card = Card("Remembered Aliases")
+        card = Card("Friends / Remembered Peers")
         self.list = QListWidget()
         self.code_input = QLineEdit()
-        self.code_input.setPlaceholderText("Code/session label")
+        self.code_input.setPlaceholderText("Transfer code / session label")
         self.alias_input = QLineEdit()
-        self.alias_input.setPlaceholderText("Friendly alias")
+        self.alias_input.setPlaceholderText("Friend name / alias")
 
         actions = QHBoxLayout()
-        save_btn = QPushButton("Save Alias")
-        remove_btn = QPushButton("Remove Selected")
+        save_btn = QPushButton("Add / Save Friend")
+        remove_btn = QPushButton("Remove Friend")
         actions.addWidget(save_btn)
         actions.addWidget(remove_btn)
         actions.addStretch(1)
@@ -37,6 +37,7 @@ class DevicesPage(QWidget):
 
         save_btn.clicked.connect(self.save_alias)
         remove_btn.clicked.connect(self.remove_selected)
+        self.context.transfer_service.transfer_finished.connect(lambda _tid, _status: self.refresh())
         self.refresh()
 
     def refresh(self):
