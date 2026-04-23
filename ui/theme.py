@@ -1,9 +1,19 @@
 from __future__ import annotations
 
+from PySide6.QtGui import QFont
+
 from models.settings import AppSettings
 
 
 def apply_theme(app, settings: AppSettings) -> None:
+    # Some systems can surface a default font with no point/pixel size set,
+    # which can trigger QFont::setPointSize warnings during style updates.
+    base_font = app.font()
+    if base_font.pointSize() <= 0 and base_font.pixelSize() <= 0:
+        fallback = QFont(base_font)
+        fallback.setPointSize(10)
+        app.setFont(fallback)
+
     accent = settings.accent_color or "#8f5cff"
     if settings.dark_mode:
         palette = {

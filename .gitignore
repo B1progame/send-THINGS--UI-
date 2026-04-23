@@ -1,5 +1,6 @@
 .venv/
 .vscode/
+.idea/
 
 __pycache__/
 *.pyc
@@ -12,7 +13,12 @@ dist/
 *.spec
 installer_output/
 *.exe
+*.zip
+*.7z
 
 # Logs and local state
 *.log
 *.tmp
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/

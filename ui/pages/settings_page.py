@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+from PySide6.QtCore import QObject, QThread, Qt, Signal, Slot
 from PySide6.QtWidgets import (
+    QApplication,
     QCheckBox,
     QComboBox,
+    QDialog,
     QFileDialog,
     QGridLayout,
     QHBoxLayout,
@@ -11,14 +14,72 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QMessageBox,
     QPushButton,
+    QProgressBar,
     QScrollArea,
     QSpinBox,
     QVBoxLayout,
     QWidget,
 )
 
+from app.version import APP_VERSION
 from ui.components.common import Card, PageHeader
 from ui.theme import apply_theme
+
+
+class UpdateWorker(QObject):
+    progress = Signal(int, int)
+    status = Signal(str)
+    finished = Signal(object)
+    failed = Signal(str)
+
+    def __init__(self, update_service):
+        super().__init__()
+        self.update_service = update_service
+
+    @Slot()
+    def run(self):
+        try:
+            result = self.update_service.download_latest_update(
+                progress_callback=lambda done, total: self.progress.emit(done, total),
+                status_callback=lambda text: self.status.emit(text),
+            )
+            self.finished.emit(result)
+        except Exception as exc:
+            self.failed.emit(str(exc))
+
+
+class UpdateProgressDialog(QDialog):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Updating CrocDrop")
+        self.setModal(True)
+        self.setMinimumWidth(440)
+        self.setWindowFlag(Qt.WindowType.WindowContextHelpButtonHint, False)
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(16, 16, 16, 16)
+        layout.setSpacing(10)
+
+        self.status_label = QLabel("Preparing update ...")
+        self.progress_bar = QProgressBar()
+        self.progress_bar.setRange(0, 0)
+        self.progress_bar.setValue(0)
+
+        layout.addWidget(self.status_label)
+        layout.addWidget(self.progress_bar)
+
+    def set_status(self, text: str) -> None:
+        self.status_label.setText(text)
+
+    def set_progress(self, downloaded: int, total: int) -> None:
+        if total > 0:
+            self.progress_bar.setRange(0, total)
+            self.progress_bar.setValue(min(downloaded, total))
+            percent = int((downloaded / total) * 100)
+            self.status_label.setText(f"Downloading update ... {percent}%")
+        else:
+            self.progress_bar.setRange(0, 0)
+            self.status_label.setText("Downloading update ...")
 
 
 class SettingsPage(QWidget):
@@ -26,6 +87,9 @@ class SettingsPage(QWidget):
         super().__init__()
         self.context = context
         self.app = app
+        self.update_thread: QThread | None = None
+        self.update_worker: UpdateWorker | None = None
+        self.update_dialog: UpdateProgressDialog | None = None
 
         root = QVBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
@@ -141,6 +205,15 @@ class SettingsPage(QWidget):
         debug_card.layout.addWidget(self.enable_debug_btn)
         debug_card.layout.addWidget(self.disable_debug_btn)
         container_layout.addWidget(debug_card)
+
+        updates_card = Card("App Updates")
+        self.current_version_label = QLabel(f"Current version: {APP_VERSION}")
+        self.current_version_label.setObjectName("SettingDescription")
+        self.update_btn = QPushButton("Update App")
+        self.update_btn.setObjectName("PrimaryButton")
+        updates_card.layout.addWidget(self.current_version_label)
+        updates_card.layout.addWidget(self.update_btn)
+        container_layout.addWidget(updates_card)
         container_layout.addStretch(1)
 
         browse_btn.clicked.connect(self.pick_folder)
@@ -152,6 +225,7 @@ class SettingsPage(QWidget):
         self.guest_mode_btn.clicked.connect(self.set_guest_mode)
         self.enable_debug_btn.clicked.connect(self.enable_debug_features)
         self.disable_debug_btn.clicked.connect(self.disable_debug_features)
+        self.update_btn.clicked.connect(self.update_app)
         self.refresh_account_section()
         self.refresh_debug_controls()
 
@@ -294,3 +368,85 @@ class SettingsPage(QWidget):
         self.debug_status_label.setText(f"Debug features are currently {'enabled' if enabled else 'disabled'}.")
         self.enable_debug_btn.setEnabled(not enabled)
         self.disable_debug_btn.setEnabled(enabled)
+
+    def update_app(self):
+        if self.update_thread is not None:
+            QMessageBox.information(self, "Update App", "An update check is already running.")
+            return
+
+        self.update_btn.setEnabled(False)
+        self.update_dialog = UpdateProgressDialog(self)
+        self.update_dialog.set_status("Checking GitHub releases ...")
+        self.update_dialog.show()
+
+        self.update_thread = QThread(self)
+        self.update_worker = UpdateWorker(self.context.update_service)
+        self.update_worker.moveToThread(self.update_thread)
+
+        self.update_thread.started.connect(self.update_worker.run)
+        self.update_worker.progress.connect(self._on_update_progress)
+        self.update_worker.status.connect(self._on_update_status)
+        self.update_worker.finished.connect(self._on_update_finished)
+        self.update_worker.failed.connect(self._on_update_failed)
+        self.update_worker.finished.connect(self.update_thread.quit)
+        self.update_worker.failed.connect(self.update_thread.quit)
+        self.update_thread.finished.connect(self._cleanup_update_thread)
+        self.update_thread.start()
+
+    def _cleanup_update_thread(self):
+        if self.update_worker is not None:
+            self.update_worker.deleteLater()
+            self.update_worker = None
+        if self.update_thread is not None:
+            self.update_thread.deleteLater()
+            self.update_thread = None
+        self.update_btn.setEnabled(True)
+
+    def _on_update_progress(self, downloaded: int, total: int):
+        if self.update_dialog is not None:
+            self.update_dialog.set_progress(downloaded, total)
+
+    def _on_update_status(self, text: str):
+        if self.update_dialog is not None:
+            self.update_dialog.set_status(text)
+
+    def _on_update_failed(self, message: str):
+        if self.update_dialog is not None:
+            self.update_dialog.close()
+            self.update_dialog.deleteLater()
+            self.update_dialog = None
+        QMessageBox.warning(self, "Update App", f"Update failed:\n{message}")
+
+    def _on_update_finished(self, result):
+        if self.update_dialog is not None:
+            self.update_dialog.close()
+            self.update_dialog.deleteLater()
+            self.update_dialog = None
+
+        if result.status == "up-to-date":
+            QMessageBox.information(self, "Update App", result.message)
+            return
+
+        if result.status != "downloaded" or not result.archive_path:
+            QMessageBox.warning(self, "Update App", "Update completed with an unexpected result.")
+            return
+
+        answer = QMessageBox.information(
+            self,
+            "Update Ready",
+            (
+                f"Update {result.latest_version} downloaded.\n\n"
+                "CrocDrop will now close, apply the update, and start again automatically."
+            ),
+            QMessageBox.Ok | QMessageBox.Cancel,
+            QMessageBox.Ok,
+        )
+        if answer != QMessageBox.Ok:
+            return
+
+        try:
+            self.context.update_service.apply_update_and_restart(result.archive_path)
+        except Exception as exc:
+            QMessageBox.warning(self, "Update App", f"Could not start updater:\n{exc}")
+            return
+        QApplication.quit()

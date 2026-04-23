@@ -1,7 +1,7 @@
 #define MyAppName "CrocDrop"
-#define MyAppVersion "1.0.0"
+#define MyAppVersion "1.1.0"
 #define MyAppPublisher "B1progame"
-#define MyAppURL "https://github.com/B1progame/send-THINGS--UI-"
+#define MyAppURL "https://github.com/B1progame/CrocDrop"
 #define MyAppExeName "CrocDrop.exe"
 #ifndef MyOutputBaseFilename
   #define MyOutputBaseFilename "CrocDrop-Setup-" + MyAppVersion

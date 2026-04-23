@@ -14,6 +14,7 @@ from services.history_service import HistoryService
 from services.log_service import LogService
 from services.settings_service import SettingsService
 from services.transfer_service import TransferService
+from services.update_service import UpdateService
 from ui.main_window import MainWindow
 from ui.profile_dialog import ProfileDialog
 from ui.theme import apply_theme
@@ -27,6 +28,7 @@ class AppContext:
     croc_manager: CrocManager
     transfer_service: TransferService
     debug_service: DebugService
+    update_service: UpdateService
 
 
 def _build_app_icon() -> QIcon:
@@ -80,6 +82,7 @@ def build_app(debug_peer: bool = False) -> tuple[QApplication, MainWindow]:
         croc_manager=croc_manager,
         log_service=log_service,
     )
+    update_service = UpdateService(log_service=log_service)
     context = AppContext(
         log_service=log_service,
         settings_service=settings_service,
@@ -87,6 +90,7 @@ def build_app(debug_peer: bool = False) -> tuple[QApplication, MainWindow]:
         croc_manager=croc_manager,
         transfer_service=transfer_service,
         debug_service=debug_service,
+        update_service=update_service,
     )
 
     apply_theme(qt_app, settings)
