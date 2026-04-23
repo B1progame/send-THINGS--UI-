@@ -83,6 +83,8 @@ class UpdateProgressDialog(QDialog):
 
 
 class SettingsPage(QWidget):
+    settings_changed = Signal()
+
     def __init__(self, context, app):
         super().__init__()
         self.context = context
@@ -108,14 +110,6 @@ class SettingsPage(QWidget):
         scroll.setWidget(container)
 
         settings = self.context.settings_service.get()
-
-        card = Card("General")
-        form = QGridLayout()
-        form.setContentsMargins(0, 0, 0, 0)
-        form.setHorizontalSpacing(16)
-        form.setVerticalSpacing(12)
-        form.setColumnMinimumWidth(0, 260)
-        form.setColumnStretch(1, 1)
 
         self.download_folder = QLineEdit(settings.default_download_folder)
         browse_btn = QPushButton("Browse")
@@ -164,56 +158,101 @@ class SettingsPage(QWidget):
         self.auto_download = QCheckBox("Enabled")
         self.auto_download.setChecked(settings.auto_download_croc)
 
+        general_card, general_form = self._make_settings_card(
+            "General",
+            "Tune the visual shell and the everyday defaults CrocDrop should remember for you.",
+        )
         row = 0
-        row = self._add_setting_row(form, row, "Default download folder", "Where incoming files are saved by default.", folder_widget)
-        row = self._add_setting_row(form, row, "Ask before receiving", "Prompt confirmation before accepting incoming transfer data.", self.ask_before)
-        row = self._add_setting_row(form, row, "Auto-open received folder", "Open the destination folder after a successful receive.", self.auto_open)
-        row = self._add_setting_row(form, row, "Remember last folders", "Keep the most recent send/receive directories for faster reuse.", self.remember_last)
-        row = self._add_setting_row(form, row, "Dark mode", "Use the premium dark appearance for the whole app shell.", self.dark_mode)
-        row = self._add_setting_row(form, row, "Accent color", "Primary accent for focus rings and highlights.", self.accent)
-        row = self._add_setting_row(form, row, "Relay mode", "Use official public relay now, custom relay is ready for future self-hosting.", self.relay_mode)
-        row = self._add_setting_row(form, row, "Custom relay", "Optional custom relay endpoint (used when relay mode is custom).", self.custom_relay)
-        row = self._add_setting_row(form, row, "Croc binary path", "Managed croc executable location used by CrocDrop.", binary_widget)
-        row = self._add_setting_row(form, row, "Auto-download croc", "Automatically fetch official croc release when binary is missing.", self.auto_download)
-        row = self._add_setting_row(form, row, "Log retention (days)", "Automatically prune old logs older than this window.", self.log_retention)
+        row = self._add_setting_row(general_form, row, "Dark mode", "Use the premium dark appearance for the whole app shell.", self.dark_mode)
+        row = self._add_setting_row(general_form, row, "Accent color", "Primary accent for focus rings and highlights.", self.accent)
+        row = self._add_setting_row(general_form, row, "Remember last folders", "Keep the most recent send/receive directories for faster reuse.", self.remember_last)
+        row = self._add_setting_row(general_form, row, "Log retention", "Automatically prune old logs older than this window.", self.log_retention)
+        container_layout.addWidget(general_card)
+
+        transfers_card, transfers_form = self._make_settings_card(
+            "Transfers and Receive Behavior",
+            "Control how incoming files are accepted, saved, and opened after successful transfers.",
+        )
+        row = 0
+        row = self._add_setting_row(transfers_form, row, "Default download folder", "Where incoming files are saved by default.", folder_widget)
+        row = self._add_setting_row(transfers_form, row, "Ask before receiving", "Prompt confirmation before accepting incoming transfer data.", self.ask_before)
+        row = self._add_setting_row(transfers_form, row, "Auto-open received folder", "Open the destination folder after a successful receive.", self.auto_open)
+        container_layout.addWidget(transfers_card)
+
+        connection_card, connection_form = self._make_settings_card(
+            "Croc, Binary, and Connection",
+            "Manage the local croc executable and relay options used by the transfer backend.",
+        )
+        row = 0
+        row = self._add_setting_row(connection_form, row, "Relay mode", "Use official public relay now, custom relay is ready for future self-hosting.", self.relay_mode)
+        row = self._add_setting_row(connection_form, row, "Custom relay", "Optional custom relay endpoint (used when relay mode is custom).", self.custom_relay)
+        row = self._add_setting_row(connection_form, row, "Croc binary path", "Managed croc executable location used by CrocDrop.", binary_widget)
+        row = self._add_setting_row(connection_form, row, "Auto-download croc", "Automatically fetch official croc release when binary is missing.", self.auto_download)
+        container_layout.addWidget(connection_card)
+
         save_btn = QPushButton("Save Settings")
         save_btn.setObjectName("PrimaryButton")
-        card.layout.addLayout(form)
-        card.layout.addWidget(save_btn)
-        container_layout.addWidget(card)
 
-        account_card = Card("Account")
+        account_card = Card("Profile")
+        account_hint = QLabel("Profiles are local-only labels for this installation. Guest mode keeps CrocDrop account-free.")
+        account_hint.setObjectName("SettingDescription")
+        account_hint.setWordWrap(True)
         self.current_profile_label = QLabel()
-        self.current_profile_label.setObjectName("SettingDescription")
+        self.current_profile_label.setObjectName("ProfileCurrentLabel")
         self.profile_combo = QComboBox()
         self.switch_profile_btn = QPushButton("Switch Profile")
-        self.remove_profile_btn = QPushButton("Remove Current Account")
+        self.remove_profile_btn = QPushButton("Remove Current Profile")
         self.guest_mode_btn = QPushButton("Use Guest Mode")
+        profile_actions = QHBoxLayout()
+        profile_actions.setContentsMargins(0, 0, 0, 0)
+        profile_actions.setSpacing(8)
+        profile_actions.addWidget(self.switch_profile_btn)
+        profile_actions.addWidget(self.remove_profile_btn)
+        profile_actions.addWidget(self.guest_mode_btn)
+        profile_actions.addStretch(1)
+        account_card.layout.addWidget(account_hint)
         account_card.layout.addWidget(self.current_profile_label)
         account_card.layout.addWidget(self.profile_combo)
-        account_card.layout.addWidget(self.switch_profile_btn)
-        account_card.layout.addWidget(self.remove_profile_btn)
-        account_card.layout.addWidget(self.guest_mode_btn)
+        account_card.layout.addLayout(profile_actions)
         container_layout.addWidget(account_card)
 
-        debug_card = Card("Developer Features")
+        debug_card = Card("Advanced and Debug Features")
+        debug_hint = QLabel("Debug controls are intentionally restart-aware so the main navigation stays predictable.")
+        debug_hint.setObjectName("SettingDescription")
+        debug_hint.setWordWrap(True)
         self.debug_status_label = QLabel()
         self.debug_status_label.setObjectName("SettingDescription")
         self.enable_debug_btn = QPushButton("Enable Debug Features")
         self.disable_debug_btn = QPushButton("Disable Debug Features")
+        debug_actions = QHBoxLayout()
+        debug_actions.setContentsMargins(0, 0, 0, 0)
+        debug_actions.setSpacing(8)
+        debug_actions.addWidget(self.enable_debug_btn)
+        debug_actions.addWidget(self.disable_debug_btn)
+        debug_actions.addStretch(1)
+        debug_card.layout.addWidget(debug_hint)
         debug_card.layout.addWidget(self.debug_status_label)
-        debug_card.layout.addWidget(self.enable_debug_btn)
-        debug_card.layout.addWidget(self.disable_debug_btn)
+        debug_card.layout.addLayout(debug_actions)
         container_layout.addWidget(debug_card)
 
         updates_card = Card("App Updates")
+        update_hint = QLabel("Check GitHub releases and apply downloaded CrocDrop updates with the built-in updater.")
+        update_hint.setObjectName("SettingDescription")
+        update_hint.setWordWrap(True)
         self.current_version_label = QLabel(f"Current version: {APP_VERSION}")
         self.current_version_label.setObjectName("SettingDescription")
         self.update_btn = QPushButton("Update App")
         self.update_btn.setObjectName("PrimaryButton")
+        updates_card.layout.addWidget(update_hint)
         updates_card.layout.addWidget(self.current_version_label)
         updates_card.layout.addWidget(self.update_btn)
         container_layout.addWidget(updates_card)
+
+        action_row = QHBoxLayout()
+        action_row.setContentsMargins(0, 2, 0, 0)
+        action_row.addStretch(1)
+        action_row.addWidget(save_btn)
+        container_layout.addLayout(action_row)
         container_layout.addStretch(1)
 
         browse_btn.clicked.connect(self.pick_folder)
@@ -228,6 +267,22 @@ class SettingsPage(QWidget):
         self.update_btn.clicked.connect(self.update_app)
         self.refresh_account_section()
         self.refresh_debug_controls()
+
+    def _make_settings_card(self, title: str, description: str) -> tuple[Card, QGridLayout]:
+        card = Card(title)
+        if description:
+            desc = QLabel(description)
+            desc.setObjectName("SettingDescription")
+            desc.setWordWrap(True)
+            card.layout.addWidget(desc)
+        grid = QGridLayout()
+        grid.setContentsMargins(0, 4, 0, 0)
+        grid.setHorizontalSpacing(18)
+        grid.setVerticalSpacing(14)
+        grid.setColumnMinimumWidth(0, 280)
+        grid.setColumnStretch(1, 1)
+        card.layout.addLayout(grid)
+        return card, grid
 
     def _add_setting_row(self, grid: QGridLayout, row: int, label_text: str, description: str, widget: QWidget) -> int:
         left = QWidget()
@@ -274,6 +329,7 @@ class SettingsPage(QWidget):
         apply_theme(self.app, s)
         self.refresh_account_section()
         self.refresh_debug_controls()
+        self.settings_changed.emit()
 
     def delete_binary(self):
         path_text = self.binary_path.text().strip()
@@ -295,6 +351,7 @@ class SettingsPage(QWidget):
             settings.croc_binary_path = ""
             self.context.settings_service.save(settings)
             QMessageBox.information(self, "Delete Croc Binary", message)
+            self.settings_changed.emit()
         else:
             QMessageBox.warning(self, "Delete Croc Binary", message)
 
@@ -313,17 +370,18 @@ class SettingsPage(QWidget):
             return
         self.context.settings_service.set_current_profile(selected)
         self.refresh_account_section()
-        QMessageBox.information(self, "Account", f"Switched profile to '{selected}'.")
+        self.settings_changed.emit()
+        QMessageBox.information(self, "Profile", f"Switched profile to '{selected}'.")
 
     def remove_current_profile(self):
         settings = self.context.settings_service.get()
         current = settings.current_profile.strip()
         if not current:
-            QMessageBox.information(self, "Account", "You are already in guest mode.")
+            QMessageBox.information(self, "Profile", "You are already in guest mode.")
             return
         answer = QMessageBox.question(
             self,
-            "Remove Account",
+            "Remove Profile",
             f"Remove account profile '{current}'?\n\nYou will return to guest mode.",
             QMessageBox.Yes | QMessageBox.No,
             QMessageBox.No,
@@ -332,12 +390,14 @@ class SettingsPage(QWidget):
             return
         self.context.settings_service.remove_profile(current)
         self.refresh_account_section()
-        QMessageBox.information(self, "Account", f"Removed '{current}'.")
+        self.settings_changed.emit()
+        QMessageBox.information(self, "Profile", f"Removed '{current}'.")
 
     def set_guest_mode(self):
         self.context.settings_service.use_guest_mode()
         self.refresh_account_section()
-        QMessageBox.information(self, "Account", "Guest mode enabled. You will be asked at startup next launch.")
+        self.settings_changed.emit()
+        QMessageBox.information(self, "Profile", "Guest mode enabled. You will be asked at startup next launch.")
 
     def enable_debug_features(self):
         password, ok = QInputDialog.getText(self, "Enable Debug", "Enter admin password:", QLineEdit.Password)
@@ -351,6 +411,7 @@ class SettingsPage(QWidget):
         settings.debug_mode = True
         self.context.settings_service.save(settings)
         self.refresh_debug_controls()
+        self.settings_changed.emit()
         QMessageBox.information(self, "Enable Debug", "Debug features enabled. Restart CrocDrop to show the Debug page.")
 
     def disable_debug_features(self):
@@ -361,6 +422,7 @@ class SettingsPage(QWidget):
         settings.debug_mode = False
         self.context.settings_service.save(settings)
         self.refresh_debug_controls()
+        self.settings_changed.emit()
         QMessageBox.information(self, "Disable Debug", "Debug features disabled. Restart CrocDrop to hide the Debug page.")
 
     def refresh_debug_controls(self):

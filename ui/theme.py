@@ -77,6 +77,36 @@ def apply_theme(app, settings: AppSettings) -> None:
             border: 1px solid {palette['line']};
             border-radius: 14px;
         }}
+        QFrame#SidebarFooter {{
+            background: {palette['surface_2']};
+            border: 1px solid {palette['line']};
+            border-radius: 18px;
+        }}
+        QPushButton#SidebarFooterButton {{
+            min-width: 46px;
+            max-width: 46px;
+            min-height: 46px;
+            max-height: 46px;
+            border-radius: 23px;
+            padding: 0;
+            background: {palette['surface_0']};
+            border: 1px solid {palette['line_soft']};
+        }}
+        QPushButton#SidebarFooterButton:hover {{
+            background: {palette['hover']};
+            border: 1px solid {accent};
+        }}
+        QPushButton#SidebarFooterButton:pressed {{
+            background: {palette['pressed']};
+            border: 1px solid {accent};
+        }}
+        QPushButton#SidebarFooterButton:checked {{
+            background: {accent_gradient_soft};
+            border: 1px solid {accent};
+        }}
+        QPushButton#SidebarFooterButton:focus {{
+            border: 1px solid {accent};
+        }}
         QFrame#LogoPill {{
             background: {palette['surface_0']};
             border: 1px solid {palette['line']};
@@ -153,6 +183,44 @@ def apply_theme(app, settings: AppSettings) -> None:
             border-radius: 12px;
             border: 1px solid {palette['line']};
         }}
+        QFrame#ProfileHero, QFrame#AboutHero {{
+            background: {palette['surface_1']};
+            border-radius: 18px;
+            border: 1px solid {palette['line']};
+        }}
+        QLabel#ProfileAvatar {{
+            color: #ffffff;
+            background: {accent_gradient};
+            border-radius: 29px;
+            font-size: 18px;
+            font-weight: 900;
+            letter-spacing: 0.5px;
+        }}
+        QLabel#AboutLogoMark {{
+            color: #ffffff;
+            background: {accent_gradient};
+            border-radius: 32px;
+            font-size: 18px;
+            font-weight: 900;
+            letter-spacing: 0.5px;
+        }}
+        QLabel#ProfileName, QLabel#AboutTitle {{
+            font-size: 24px;
+            font-weight: 800;
+            letter-spacing: 0.2px;
+        }}
+        QLabel#AboutDescription {{
+            color: {palette['text_soft']};
+            font-size: 13px;
+        }}
+        QLabel#AboutVersionPill, QLabel#ProfileCurrentLabel {{
+            color: {palette['text']};
+            background: {palette['surface_2']};
+            border: 1px solid {palette['line']};
+            border-radius: 10px;
+            padding: 5px 10px;
+            font-weight: 700;
+        }}
         QLabel#CardTitle {{
             font-size: 14px;
             font-weight: 700;
@@ -204,6 +272,10 @@ def apply_theme(app, settings: AppSettings) -> None:
         }}
         QLineEdit:focus, QPlainTextEdit:focus, QTextEdit:focus, QComboBox:focus, QSpinBox:focus {{
             border-color: {accent};
+        }}
+        QScrollArea, QScrollArea > QWidget, QScrollArea > QWidget > QWidget {{
+            background: transparent;
+            border: 0;
         }}
         QHeaderView::section {{
             background: {palette['surface_2']};

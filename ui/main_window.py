@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PySide6.QtCore import QEasingCurve, QEvent, QPropertyAnimation, QRect, Qt
+from PySide6.QtCore import QEasingCurve, QEvent, QPropertyAnimation, QRect, QSize, QSignalBlocker, Qt
 from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import (
     QAbstractItemView,
@@ -26,6 +26,7 @@ from ui.pages.debug_page import DebugPage
 from ui.pages.devices_page import DevicesPage
 from ui.pages.home_page import HomePage
 from ui.pages.logs_page import LogsPage
+from ui.pages.profile_page import ProfilePage
 from ui.pages.receive_page import ReceivePage
 from ui.pages.send_page import SendPage
 from ui.pages.settings_page import SettingsPage
@@ -98,13 +99,17 @@ class MainWindow(QMainWindow):
         self.nav.setVerticalScrollMode(QAbstractItemView.ScrollMode.ScrollPerPixel)
         self.nav.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.nav.setUniformItemSizes(True)
+        self.nav.setIconSize(QSize(20, 20))
         self._build_nav_items()
+        self.footer_buttons: dict[str, QPushButton] = {}
+        footer = self._build_sidebar_footer()
 
         # Sidebar bug fix: the previous layout added a bottom stretch, which consumed free height and kept
         # navigation items cramped near the top. Giving nav stretch=1 lets it use full height and scroll only if needed.
         side_layout.addWidget(brand_shell)
         side_layout.addWidget(mode)
         side_layout.addWidget(self.nav, 1)
+        side_layout.addWidget(footer)
 
         panel = QFrame()
         panel.setObjectName("MainPanel")
@@ -139,6 +144,7 @@ class MainWindow(QMainWindow):
         self.settings_page = SettingsPage(context, QApplication.instance())
         self.debug_page = DebugPage(context)
         self.about_page = AboutPage()
+        self.profile_page = ProfilePage(context)
 
         self.page_map: dict[str, QWidget] = {
             "Home": self.home_page,
@@ -149,14 +155,19 @@ class MainWindow(QMainWindow):
             "Logs": self.logs_page,
             "Settings": self.settings_page,
             "About": self.about_page,
+            "Profile": self.profile_page,
         }
         if self.debug_enabled:
             self.page_map["Debug"] = self.debug_page
 
-        for label in self._nav_labels():
+        self.page_indices: dict[str, int] = {}
+        self.nav_rows: dict[str, int] = {}
+        for label in self._page_labels():
             page = self.page_map.get(label)
             if page is not None:
+                self.page_indices[label] = self.pages.count()
                 self.pages.addWidget(page)
+        self.nav_rows = {self.nav.item(i).text(): i for i in range(self.nav.count())}
 
         panel_layout.addWidget(header)
         panel_layout.addWidget(self.pages, 1)
@@ -164,8 +175,7 @@ class MainWindow(QMainWindow):
         shell_layout.addWidget(sidebar)
         shell_layout.addWidget(panel, 1)
 
-        self.nav.currentRowChanged.connect(self.switch_page)
-        self.nav.currentRowChanged.connect(self.on_page_changed)
+        self.nav.currentRowChanged.connect(self._on_nav_row_changed)
         self.nav.currentRowChanged.connect(lambda _: self._sync_nav_indicator(animated=True))
         self.nav.verticalScrollBar().valueChanged.connect(lambda _: self._sync_nav_indicator(animated=False))
         self.nav.viewport().installEventFilter(self)
@@ -176,11 +186,12 @@ class MainWindow(QMainWindow):
         self.nav_indicator.hide()
         self.nav_indicator.lower()
         self.home_page.navigate_requested.connect(self.navigate_to)
+        self.profile_page.navigate_requested.connect(self.navigate_to)
+        self.settings_page.settings_changed.connect(self._on_settings_changed)
         self.context.history_service.history_changed.connect(self.home_page.refresh)
         self.context.transfer_service.transfer_finished.connect(self.on_transfer_finished)
 
-        self.nav.setCurrentRow(0)
-        self._sync_nav_indicator(animated=False)
+        self.navigate_to("Home", animated=False)
         self.check_croc()
 
     def eventFilter(self, watched, event):
@@ -188,12 +199,14 @@ class MainWindow(QMainWindow):
             self._sync_nav_indicator(animated=False)
         return super().eventFilter(watched, event)
 
-    def _nav_labels(self) -> list[str]:
-        labels = ["Home", "Send", "Receive", "Transfers", "Devices", "Logs", "Settings"]
+    def _main_nav_labels(self) -> list[str]:
+        labels = ["Home", "Send", "Receive", "Transfers", "Devices", "Logs"]
         if self.debug_enabled:
             labels.append("Debug")
-        labels.append("About")
         return labels
+
+    def _page_labels(self) -> list[str]:
+        return [*self._main_nav_labels(), "Settings", "About", "Profile"]
 
     def _build_nav_items(self) -> None:
         items: dict[str, str] = {
@@ -207,20 +220,76 @@ class MainWindow(QMainWindow):
             "Debug": "nav_debug.svg",
             "About": "nav_about.svg",
         }
-        for label in self._nav_labels():
+        for label in self._main_nav_labels():
             icon_name = items[label]
             icon_path = self.icon_dir / icon_name
             icon = QIcon(str(icon_path)) if icon_path.exists() else QIcon()
             item = QListWidgetItem(icon, label)
             self.nav.addItem(item)
 
-    def navigate_to(self, page_name: str):
-        mapping = {self.nav.item(i).text(): i for i in range(self.nav.count())}
-        if page_name in mapping:
-            self.nav.setCurrentRow(mapping[page_name])
+    def _build_sidebar_footer(self) -> QFrame:
+        footer = QFrame()
+        footer.setObjectName("SidebarFooter")
+        layout = QHBoxLayout(footer)
+        layout.setContentsMargins(10, 10, 10, 10)
+        layout.setSpacing(10)
 
-    def on_page_changed(self, index: int):
-        name = self.nav.item(index).text() if index >= 0 else ""
+        actions = [
+            ("Settings", "nav_settings.svg"),
+            ("About", "nav_about.svg"),
+            ("Profile", "nav_profile.svg"),
+        ]
+        for label, icon_name in actions:
+            button = QPushButton()
+            button.setObjectName("SidebarFooterButton")
+            button.setCheckable(True)
+            button.setToolTip(label)
+            button.setAccessibleName(label)
+            button.setFixedSize(46, 46)
+            button.setIconSize(QSize(20, 20))
+            icon_path = self.icon_dir / icon_name
+            if icon_path.exists():
+                button.setIcon(QIcon(str(icon_path)))
+            button.clicked.connect(lambda _checked=False, page=label: self.navigate_to(page))
+            layout.addWidget(button)
+            self.footer_buttons[label] = button
+
+        return footer
+
+    def navigate_to(self, page_name: str, animated: bool = True):
+        self._show_page(page_name, animated=animated, sync_nav=True)
+
+    def _on_nav_row_changed(self, index: int):
+        if index < 0:
+            return
+        item = self.nav.item(index)
+        if item is None:
+            return
+        self._show_page(item.text(), animated=True, sync_nav=False)
+
+    def _show_page(self, name: str, animated: bool = True, sync_nav: bool = True):
+        if name not in self.page_indices:
+            return
+
+        if sync_nav:
+            with QSignalBlocker(self.nav):
+                if name in self.nav_rows:
+                    self.nav.setCurrentRow(self.nav_rows[name])
+                else:
+                    self.nav.clearSelection()
+                    self.nav.setCurrentRow(-1)
+
+        page_index = self.page_indices[name]
+        if self.pages.currentIndex() != page_index:
+            self.pages.setCurrentIndex(page_index)
+            if animated:
+                self._fade_current_page()
+
+        self._update_page_chrome(name)
+        self._sync_footer_buttons(name)
+        self._sync_nav_indicator(animated=animated)
+
+    def _update_page_chrome(self, name: str):
         self.header_title.setText(name or "CrocDrop")
         self.context_label.setText(name or "Ready")
         if name == "Home":
@@ -229,14 +298,25 @@ class MainWindow(QMainWindow):
             self.transfers_page.refresh()
         elif name == "Devices":
             self.devices_page.refresh()
+        elif name == "Settings":
+            self.settings_page.refresh_account_section()
+            self.settings_page.refresh_debug_controls()
+        elif name == "Profile":
+            self.profile_page.refresh()
+        self._refresh_identity_surfaces()
 
-    def switch_page(self, index: int) -> None:
-        if index < 0:
-            return
-        if self.pages.currentIndex() == index:
-            return
-        self.pages.setCurrentIndex(index)
-        self._fade_current_page()
+    def _sync_footer_buttons(self, active_page: str) -> None:
+        for page, button in self.footer_buttons.items():
+            button.setChecked(page == active_page)
+
+    def _refresh_identity_surfaces(self) -> None:
+        current_profile = self.context.settings_service.get().current_profile.strip() or "Guest"
+        self.user_badge.setText(f"User: {current_profile}")
+
+    def _on_settings_changed(self) -> None:
+        self._refresh_identity_surfaces()
+        if self.pages.currentWidget() is self.profile_page:
+            self.profile_page.refresh()
 
     def _fade_current_page(self) -> None:
         widget = self.pages.currentWidget()
