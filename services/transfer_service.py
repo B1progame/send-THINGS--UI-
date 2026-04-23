@@ -171,6 +171,8 @@ class TransferService(QObject):
         self.transfer_updated.emit(transfer_id)
 
     def _on_finished(self, record: TransferRecord, transfer_id: str, exit_code: int) -> None:
+        if transfer_id not in self.active and record.status == "canceled":
+            return
         no_files_transferred = any("no files transferred" in line.lower() for line in record.output_excerpt[-80:])
         room_not_ready = any(
             ("room (secure channel) not ready" in line.lower() or "peer disconnected" in line.lower())

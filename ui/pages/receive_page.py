@@ -28,7 +28,7 @@ class ReceivePage(QWidget):
         self.dest_input = QLineEdit()
         self.dest_input.setText(self.context.settings_service.get().default_download_folder)
         self.collision = QComboBox()
-        self.collision.addItems(["ask", "overwrite", "overwrite-disabled", "rename", "skip"])
+        self.collision.addItems(["overwrite", "skip existing"])
 
         row1 = QHBoxLayout()
         paste_btn = QPushButton("Paste")
@@ -120,12 +120,16 @@ class ReceivePage(QWidget):
 
         strategy = self.collision.currentText()
         overwrite = strategy == "overwrite"
-        if strategy in {"ask", "rename", "skip"}:
+        if not overwrite:
             self.output.appendPlainText(
-                f"Note: '{strategy}' is best-effort in croc CLI mode. Use 'overwrite' if destination already has the same filename."
+                "Note: existing files with the same name may be skipped by croc in non-overwrite mode."
             )
 
-        record = self.context.transfer_service.start_receive(code_phrase=code, destination=destination, overwrite=overwrite)
+        record = self.context.transfer_service.start_receive(
+            code_phrase=code,
+            destination=destination,
+            overwrite=overwrite,
+        )
         self.attempted_codes.add(code)
         self.current_transfer_id = record.transfer_id
         self.pending_output_lines.clear()

@@ -48,9 +48,12 @@ class SendPage(QWidget):
         code_row = QHBoxLayout()
         self.start_btn = QPushButton("Start Send")
         self.start_btn.setObjectName("PrimaryButton")
+        self.cancel_btn = QPushButton("Cancel Upload")
+        self.cancel_btn.setEnabled(False)
         copy_btn = QPushButton("Copy Code")
         copy_next_btn = QPushButton("Copy Next Code")
         code_row.addWidget(self.start_btn)
+        code_row.addWidget(self.cancel_btn)
         code_row.addWidget(copy_btn)
         code_row.addWidget(copy_next_btn)
         code_row.addStretch(1)
@@ -81,6 +84,7 @@ class SendPage(QWidget):
         btn_folder.clicked.connect(self.pick_folder)
         btn_remove.clicked.connect(self.drop.remove_selected)
         self.start_btn.clicked.connect(self.start_send)
+        self.cancel_btn.clicked.connect(self.cancel_send)
         copy_btn.clicked.connect(self.copy_code)
         copy_next_btn.clicked.connect(self.copy_next_code)
 
@@ -118,7 +122,17 @@ class SendPage(QWidget):
         self.progress.setValue(0)
         self.next_code.clear()
         self.next_code_expiry.clear()
+        self.start_btn.setEnabled(False)
+        self.cancel_btn.setEnabled(True)
         self.output.appendPlainText(f"Started transfer {record.transfer_id}")
+
+    def cancel_send(self):
+        if not self.current_transfer_id:
+            return
+        transfer_id = self.current_transfer_id
+        self.cancel_btn.setEnabled(False)
+        self.output.appendPlainText(f"[system] Canceling upload {transfer_id}...")
+        self.context.transfer_service.cancel(transfer_id)
 
     def copy_code(self):
         if not self.code.text().strip():
@@ -162,6 +176,11 @@ class SendPage(QWidget):
             return
         if status == "completed":
             self.progress.setValue(100)
+        if status == "canceled":
+            self.output.appendPlainText("[system] Upload canceled")
+        self.current_transfer_id = ""
+        self.start_btn.setEnabled(True)
+        self.cancel_btn.setEnabled(False)
 
     def on_next_code_ready(self, transfer_id: str, code_phrase: str, expires_at_iso: str):
         if transfer_id != self.current_transfer_id:

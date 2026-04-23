@@ -14,7 +14,7 @@ from urllib.request import Request, urlopen
 from models.croc import CrocBinaryInfo
 from services.settings_service import SettingsService
 from utils.hashing import sha256_of_file
-from utils.paths import tools_dir
+from utils.paths import croc_runtime_dir, tools_dir
 from utils.platforming import platform_key, select_windows_asset_token
 
 
@@ -207,13 +207,16 @@ class CrocManager:
 
     def launch_send(self, paths: list[str], code_phrase: str = "") -> subprocess.Popen:
         info = self.ensure_binary(auto_download=self.settings_service.get().auto_download_croc)
-        cmd = [info.path, *self.build_relay_args(), "send"]
+        cmd = [info.path, *self.build_relay_args(), "--ignore-stdin", "--no-compress", "send", "--hash", "md5"]
         if code_phrase.strip():
             cmd.extend(["--code", code_phrase.strip()])
         cmd.extend(paths)
-        self.log.info("Starting send process: %s", cmd)
+        runtime_cwd = croc_runtime_dir()
+        self.log.info("Starting send process: %s | cwd=%s", cmd, runtime_cwd)
         return subprocess.Popen(
             cmd,
+            cwd=str(runtime_cwd),
+            stdin=subprocess.DEVNULL,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
@@ -224,13 +227,16 @@ class CrocManager:
 
     def launch_receive(self, code_phrase: str, destination: str, overwrite: bool) -> subprocess.Popen:
         info = self.ensure_binary(auto_download=self.settings_service.get().auto_download_croc)
-        cmd = [info.path, *self.build_relay_args(), "--yes"]
+        cmd = [info.path, *self.build_relay_args(), "--yes", "--ignore-stdin", "--no-compress"]
         if overwrite:
             cmd.append("--overwrite")
         cmd.extend(["--out", destination, code_phrase])
-        self.log.info("Starting receive process: %s", cmd)
+        runtime_cwd = croc_runtime_dir()
+        self.log.info("Starting receive process: %s | cwd=%s", cmd, runtime_cwd)
         return subprocess.Popen(
             cmd,
+            cwd=str(runtime_cwd),
+            stdin=subprocess.DEVNULL,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,

@@ -51,3 +51,8 @@ def tools_dir() -> Path:
 
 def state_dir() -> Path:
     return ensure_path(app_data_dir() / "state")
+
+
+def croc_runtime_dir() -> Path:
+    # Runtime scratch for spawned croc processes (stdin/temp artifacts, etc.).
+    return ensure_path(app_cache_dir() / "croc-runtime")
