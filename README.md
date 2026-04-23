@@ -95,7 +95,7 @@ Manual flow:
 Automated flow (PowerShell):
 
 ```powershell
-.\installer\build_installer.ps1 -Version 1.0.0
+.\installer\build_installer.ps1 -Version 1.1.0
 ```
 
 ## Key Safety Constraints in App

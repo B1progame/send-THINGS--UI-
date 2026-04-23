@@ -1,10 +1,20 @@
 Param(
-    [string]$Version = "1.1.0"
+    [string]$Version = ""
 )
 
 $ErrorActionPreference = "Stop"
 $repoRoot = Split-Path -Parent $PSScriptRoot
 Set-Location $repoRoot
+
+if ([string]::IsNullOrWhiteSpace($Version)) {
+    try {
+        $Version = python -c "from app.version import APP_VERSION; print(APP_VERSION)"
+        $Version = ($Version | Select-Object -First 1).ToString().Trim()
+    }
+    catch {
+        $Version = "1.1.0"
+    }
+}
 
 if (-not (Test-Path ".\.venv\Scripts\python.exe")) {
     Write-Host "[CrocDrop] Creating virtual environment..."
