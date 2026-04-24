@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from PySide6.QtCore import QObject, QSignalBlocker, QThread, Qt, Signal, Slot
+from PySide6.QtCore import QObject, QThread, Qt, Signal, Slot
 from PySide6.QtGui import QDoubleValidator
 from PySide6.QtWidgets import (
     QApplication,
@@ -24,7 +24,7 @@ from PySide6.QtWidgets import (
 
 from app.version import APP_VERSION
 from ui.components.common import Card, PageHeader
-from ui.theme import THEME_MODE_OPTIONS, apply_theme, normalize_theme_mode
+from ui.theme import apply_theme
 
 
 class UpdateWorker(QObject):
@@ -97,7 +97,7 @@ class SettingsPage(QWidget):
         root = QVBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
         root.setSpacing(12)
-        root.addWidget(PageHeader("Settings", "Customize folders, appearance, relay behavior, and account preferences."))
+        root.addWidget(PageHeader("Settings", "Manage downloads, connection, profiles, updates, and advanced tools."))
 
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
@@ -114,6 +114,7 @@ class SettingsPage(QWidget):
 
         self.download_folder = QLineEdit(settings.default_download_folder)
         browse_btn = QPushButton("Browse")
+        browse_btn.setMaximumWidth(96)
         folder_row = QHBoxLayout()
         folder_row.setContentsMargins(0, 0, 0, 0)
         folder_row.setSpacing(8)
@@ -128,10 +129,6 @@ class SettingsPage(QWidget):
         self.auto_open.setChecked(settings.auto_open_received_folder)
         self.remember_last = QCheckBox("Enabled")
         self.remember_last.setChecked(settings.remember_last_folders)
-        self.theme_mode = QComboBox()
-        for value, label in THEME_MODE_OPTIONS:
-            self.theme_mode.addItem(label, value)
-        self.refresh_theme_mode_control()
 
         self.accent = QComboBox()
         self.accent.addItems(["#8f5cff", "#b06cff", "#ff7cc5", "#35c9a5"])
@@ -143,8 +140,10 @@ class SettingsPage(QWidget):
         self.custom_relay = QLineEdit(settings.custom_relay)
 
         self.binary_path = QLineEdit(settings.croc_binary_path)
-        binary_btn = QPushButton("Browse Binary")
-        delete_binary_btn = QPushButton("Delete Croc Binary")
+        binary_btn = QPushButton("Browse")
+        binary_btn.setMaximumWidth(96)
+        delete_binary_btn = QPushButton("Delete")
+        delete_binary_btn.setMaximumWidth(104)
         binary_row = QHBoxLayout()
         binary_row.setContentsMargins(0, 0, 0, 0)
         binary_row.setSpacing(8)
@@ -164,134 +163,249 @@ class SettingsPage(QWidget):
         self.upload_limit_widget, self.upload_unlimited, self.upload_limit = self._create_bandwidth_control(settings.upload_limit_kbps)
         self.download_limit_widget, self.download_unlimited, self.download_limit = self._create_bandwidth_control(settings.download_limit_kbps)
 
-        general_card, general_form = self._make_settings_card(
-            "Appearance and App Behavior",
-            "Visual defaults and app-wide memory behavior.",
-        )
-        row = 0
-        row = self._add_setting_row(
-            general_form,
-            row,
-            "Theme mode",
-            "Choose dark, light, or follow the operating system appearance.",
-            self.theme_mode,
-        )
-        row = self._add_setting_row(general_form, row, "Accent color", "Primary accent for focus rings and highlights.", self.accent)
-        row = self._add_setting_row(general_form, row, "Remember last folders", "Keep the most recent send/receive directories for faster reuse.", self.remember_last)
-        row = self._add_setting_row(general_form, row, "Log retention", "Automatically prune old logs older than this window.", self.log_retention)
-        container_layout.addWidget(general_card)
+        top_grid = QGridLayout()
+        top_grid.setContentsMargins(0, 0, 0, 0)
+        top_grid.setHorizontalSpacing(12)
+        top_grid.setVerticalSpacing(12)
+        top_grid.setColumnStretch(0, 1)
+        top_grid.setColumnStretch(1, 1)
+        container_layout.addLayout(top_grid)
 
-        transfers_card, transfers_form = self._make_settings_card(
-            "Receive Defaults",
-            "Control how incoming files are accepted and where they are written.",
+        general_card = self._make_settings_card(
+            "General",
+            "Accent and app memory preferences. Theme mode is managed from the sidebar switcher.",
         )
-        row = 0
-        row = self._add_setting_row(transfers_form, row, "Default download folder", "Where incoming files are saved by default.", folder_widget)
-        row = self._add_setting_row(transfers_form, row, "Ask before receiving", "Prompt confirmation before accepting incoming transfer data.", self.ask_before)
-        row = self._add_setting_row(transfers_form, row, "Auto-open received folder", "Open the destination folder after a successful receive.", self.auto_open)
-        container_layout.addWidget(transfers_card)
+        general_grid = self._build_card_grid(general_card)
+        self._add_setting_block(
+            general_grid,
+            0,
+            0,
+            "Accent color",
+            "Primary accent used for highlights and focus rings.",
+            self.accent,
+        )
+        self._add_setting_block(
+            general_grid,
+            0,
+            1,
+            "Remember last folders",
+            "Reuse the most recent send and receive folders automatically.",
+            self.remember_last,
+        )
+        top_grid.addWidget(general_card, 0, 0)
 
-        bandwidth_card, bandwidth_form = self._make_settings_card(
+        receiving_card = self._make_settings_card(
+            "Downloads and Receiving",
+            "Choose where incoming files land and how CrocDrop handles receive prompts.",
+        )
+        receiving_grid = self._build_card_grid(receiving_card)
+        self._add_setting_block(
+            receiving_grid,
+            0,
+            0,
+            "Default download folder",
+            "Destination used for new incoming transfers.",
+            folder_widget,
+            column_span=2,
+        )
+        self._add_setting_block(
+            receiving_grid,
+            1,
+            0,
+            "Ask before receiving",
+            "Require confirmation before accepting incoming data.",
+            self.ask_before,
+        )
+        self._add_setting_block(
+            receiving_grid,
+            1,
+            1,
+            "Auto-open received folder",
+            "Open the destination folder after a successful receive.",
+            self.auto_open,
+        )
+        top_grid.addWidget(receiving_card, 0, 1)
+
+        bandwidth_card = self._make_settings_card(
             "Bandwidth Limits",
-            "Set transfer speed caps in Mbit/s. Turn off Unlimited to enter a custom value.",
+            "Optional Mbit/s caps for send and receive operations on this device.",
         )
-        row = 0
-        row = self._add_setting_row(
-            bandwidth_form,
-            row,
+        bandwidth_grid = self._build_card_grid(bandwidth_card)
+        self._add_setting_block(
+            bandwidth_grid,
+            0,
+            0,
             "Upload speed limit",
             "Applies while this device is sending files.",
             self.upload_limit_widget,
         )
-        row = self._add_setting_row(
-            bandwidth_form,
-            row,
+        self._add_setting_block(
+            bandwidth_grid,
+            0,
+            1,
             "Download speed limit",
-            "Applies while this device is receiving files (if supported by installed croc version).",
+            "Applies while this device is receiving files when supported by croc.",
             self.download_limit_widget,
         )
-        container_layout.addWidget(bandwidth_card)
+        top_grid.addWidget(bandwidth_card, 1, 0)
 
-        connection_card, connection_form = self._make_settings_card(
-            "Croc Binary and Relay",
-            "Manage the croc executable and relay routing used by the transfer backend.",
+        connection_card = self._make_settings_card(
+            "Relay and Connection",
+            "Control relay selection and custom endpoint details for transfer routing.",
         )
-        row = 0
-        row = self._add_setting_row(connection_form, row, "Relay mode", "Use official public relay now, custom relay is ready for future self-hosting.", self.relay_mode)
-        row = self._add_setting_row(connection_form, row, "Custom relay", "Optional custom relay endpoint (used when relay mode is custom).", self.custom_relay)
-        row = self._add_setting_row(connection_form, row, "Croc binary path", "Managed croc executable location used by CrocDrop.", binary_widget)
-        row = self._add_setting_row(connection_form, row, "Auto-download croc", "Automatically fetch official croc release when binary is missing.", self.auto_download)
-        container_layout.addWidget(connection_card)
+        connection_grid = self._build_card_grid(connection_card)
+        self._add_setting_block(
+            connection_grid,
+            0,
+            0,
+            "Relay mode",
+            "Use the official public relay or prepare a custom endpoint.",
+            self.relay_mode,
+        )
+        self._add_setting_block(
+            connection_grid,
+            1,
+            0,
+            "Custom relay",
+            "Endpoint used when relay mode is set to custom.",
+            self.custom_relay,
+            column_span=2,
+        )
+        top_grid.addWidget(connection_card, 1, 1)
 
-        save_btn = QPushButton("Save Settings")
-        save_btn.setObjectName("PrimaryButton")
+        binary_card = self._make_settings_card(
+            "Croc Binary",
+            "Manage the croc executable that powers sending and receiving.",
+        )
+        binary_grid = self._build_card_grid(binary_card)
+        self._add_setting_block(
+            binary_grid,
+            0,
+            0,
+            "Croc binary path",
+            "Local executable path used by this installation.",
+            binary_widget,
+            column_span=2,
+        )
+        self._add_setting_block(
+            binary_grid,
+            1,
+            0,
+            "Auto-download croc",
+            "Fetch the official croc release automatically when the binary is missing.",
+            self.auto_download,
+        )
+        top_grid.addWidget(binary_card, 2, 0)
 
-        account_card = Card("Profile")
-        account_hint = QLabel("Profiles are local-only labels for this installation. Guest mode keeps CrocDrop account-free.")
-        account_hint.setObjectName("SettingDescription")
-        account_hint.setWordWrap(True)
+        self.save_btn = QPushButton("Save Settings")
+        self.save_btn.setObjectName("PrimaryButton")
+        self.save_btn.setMinimumWidth(156)
+        self.update_btn = QPushButton("Update App")
+        self.update_btn.setMinimumWidth(132)
+        self.current_version_label = QLabel(f"Current version: {APP_VERSION}")
+        self.current_version_label.setObjectName("SettingDescription")
+        update_actions = self._make_button_row(self.update_btn)
+
+        maintenance_card = self._make_settings_card(
+            "Updates and Maintenance",
+            "Housekeeping controls for logs and application updates.",
+        )
+        maintenance_grid = self._build_card_grid(maintenance_card)
+        self._add_setting_block(
+            maintenance_grid,
+            0,
+            0,
+            "Log retention",
+            "Automatically prune log files older than this number of days.",
+            self.log_retention,
+        )
+        self._add_setting_block(
+            maintenance_grid,
+            0,
+            1,
+            "Installed version",
+            "Version currently running on this device.",
+            self.current_version_label,
+        )
+        maintenance_grid.addWidget(update_actions, 1, 0, 1, 2)
+        top_grid.addWidget(maintenance_card, 2, 1)
+
+        account_card = self._make_settings_card(
+            "Profiles and Account",
+            "Profiles stay local to this installation. Guest mode keeps CrocDrop account-free.",
+        )
         self.current_profile_label = QLabel()
         self.current_profile_label.setObjectName("ProfileCurrentLabel")
         self.profile_combo = QComboBox()
         self.switch_profile_btn = QPushButton("Switch Profile")
+        self.switch_profile_btn.setMaximumWidth(132)
         self.remove_profile_btn = QPushButton("Remove Current Profile")
+        self.remove_profile_btn.setMaximumWidth(172)
         self.guest_mode_btn = QPushButton("Use Guest Mode")
-        profile_actions = QHBoxLayout()
-        profile_actions.setContentsMargins(0, 0, 0, 0)
-        profile_actions.setSpacing(8)
-        profile_actions.addWidget(self.switch_profile_btn)
-        profile_actions.addWidget(self.remove_profile_btn)
-        profile_actions.addWidget(self.guest_mode_btn)
-        profile_actions.addStretch(1)
-        account_card.layout.addWidget(account_hint)
-        account_card.layout.addWidget(self.current_profile_label)
-        account_card.layout.addWidget(self.profile_combo)
-        account_card.layout.addLayout(profile_actions)
+        self.guest_mode_btn.setMaximumWidth(136)
+        profile_picker = QWidget()
+        profile_picker_layout = QHBoxLayout(profile_picker)
+        profile_picker_layout.setContentsMargins(0, 0, 0, 0)
+        profile_picker_layout.setSpacing(8)
+        profile_picker_layout.addWidget(self.profile_combo, 1)
+        profile_picker_layout.addWidget(self.switch_profile_btn)
+        profile_actions = self._make_button_row(self.remove_profile_btn, self.guest_mode_btn)
+        account_grid = self._build_card_grid(account_card)
+        self._add_setting_block(
+            account_grid,
+            0,
+            0,
+            "Current profile",
+            "Profile currently active for this device.",
+            self.current_profile_label,
+        )
+        self._add_setting_block(
+            account_grid,
+            0,
+            1,
+            "Switch profile",
+            "Choose another saved local profile.",
+            profile_picker,
+        )
+        account_grid.addWidget(profile_actions, 1, 0, 1, 2)
         container_layout.addWidget(account_card)
 
-        debug_card = Card("Advanced and Debug Features")
-        debug_hint = QLabel("Debug controls are intentionally restart-aware so the main navigation stays predictable.")
-        debug_hint.setObjectName("SettingDescription")
-        debug_hint.setWordWrap(True)
+        debug_card = self._make_settings_card(
+            "Debug and Advanced",
+            "Restart-aware debug controls are kept here so the rest of the app stays predictable.",
+        )
         self.debug_status_label = QLabel()
         self.debug_status_label.setObjectName("SettingDescription")
         self.enable_debug_btn = QPushButton("Enable Debug Features")
+        self.enable_debug_btn.setMaximumWidth(168)
         self.disable_debug_btn = QPushButton("Disable Debug Features")
-        debug_actions = QHBoxLayout()
-        debug_actions.setContentsMargins(0, 0, 0, 0)
-        debug_actions.setSpacing(8)
-        debug_actions.addWidget(self.enable_debug_btn)
-        debug_actions.addWidget(self.disable_debug_btn)
-        debug_actions.addStretch(1)
-        debug_card.layout.addWidget(debug_hint)
-        debug_card.layout.addWidget(self.debug_status_label)
-        debug_card.layout.addLayout(debug_actions)
+        self.disable_debug_btn.setMaximumWidth(176)
+        debug_actions = self._make_button_row(self.enable_debug_btn, self.disable_debug_btn)
+        debug_grid = self._build_card_grid(debug_card)
+        self._add_setting_block(
+            debug_grid,
+            0,
+            0,
+            "Status",
+            "Enable or disable the hidden debug page for future launches.",
+            self.debug_status_label,
+            column_span=2,
+        )
+        debug_grid.addWidget(debug_actions, 1, 0, 1, 2)
         container_layout.addWidget(debug_card)
-
-        updates_card = Card("App Updates")
-        update_hint = QLabel("Check GitHub releases and apply downloaded CrocDrop updates with the built-in updater.")
-        update_hint.setObjectName("SettingDescription")
-        update_hint.setWordWrap(True)
-        self.current_version_label = QLabel(f"Current version: {APP_VERSION}")
-        self.current_version_label.setObjectName("SettingDescription")
-        self.update_btn = QPushButton("Update App")
-        self.update_btn.setObjectName("PrimaryButton")
-        updates_card.layout.addWidget(update_hint)
-        updates_card.layout.addWidget(self.current_version_label)
-        updates_card.layout.addWidget(self.update_btn)
-        container_layout.addWidget(updates_card)
 
         action_row = QHBoxLayout()
         action_row.setContentsMargins(0, 2, 0, 0)
+        action_row.setSpacing(8)
         action_row.addStretch(1)
-        action_row.addWidget(save_btn)
+        action_row.addWidget(self.save_btn)
         container_layout.addLayout(action_row)
         container_layout.addStretch(1)
 
         browse_btn.clicked.connect(self.pick_folder)
         binary_btn.clicked.connect(self.pick_binary)
         delete_binary_btn.clicked.connect(self.delete_binary)
-        save_btn.clicked.connect(self.save)
+        self.save_btn.clicked.connect(self.save)
         self.switch_profile_btn.clicked.connect(self.switch_profile)
         self.remove_profile_btn.clicked.connect(self.remove_current_profile)
         self.guest_mode_btn.clicked.connect(self.set_guest_mode)
@@ -353,38 +467,63 @@ class SettingsPage(QWidget):
             return 0
         return max(1, int(round(value_mbit * 125.0)))
 
-    def _make_settings_card(self, title: str, description: str) -> tuple[Card, QGridLayout]:
+    def _make_settings_card(self, title: str, description: str) -> Card:
         card = Card(title)
         if description:
             desc = QLabel(description)
             desc.setObjectName("SettingDescription")
             desc.setWordWrap(True)
             card.layout.addWidget(desc)
+        return card
+
+    def _build_card_grid(self, card: Card) -> QGridLayout:
         grid = QGridLayout()
-        grid.setContentsMargins(0, 4, 0, 0)
-        grid.setHorizontalSpacing(18)
-        grid.setVerticalSpacing(14)
-        grid.setColumnMinimumWidth(0, 280)
+        grid.setContentsMargins(0, 2, 0, 0)
+        grid.setHorizontalSpacing(12)
+        grid.setVerticalSpacing(10)
+        grid.setColumnStretch(0, 1)
         grid.setColumnStretch(1, 1)
         card.layout.addLayout(grid)
-        return card, grid
+        return grid
 
-    def _add_setting_row(self, grid: QGridLayout, row: int, label_text: str, description: str, widget: QWidget) -> int:
-        left = QWidget()
-        left.setObjectName("SettingInfo")
-        left_layout = QVBoxLayout(left)
-        left_layout.setContentsMargins(0, 0, 0, 0)
-        left_layout.setSpacing(2)
+    def _create_setting_block(self, label_text: str, description: str, widget: QWidget) -> QWidget:
+        block = QWidget()
+        block.setObjectName("SettingInfo")
+        block_layout = QVBoxLayout(block)
+        block_layout.setContentsMargins(0, 0, 0, 0)
+        block_layout.setSpacing(6)
         label = QLabel(label_text)
         label.setObjectName("SettingLabel")
         desc = QLabel(description)
         desc.setObjectName("SettingDescription")
         desc.setWordWrap(True)
-        left_layout.addWidget(label)
-        left_layout.addWidget(desc)
-        grid.addWidget(left, row, 0)
-        grid.addWidget(widget, row, 1)
-        return row + 1
+        block_layout.addWidget(label)
+        block_layout.addWidget(desc)
+        block_layout.addWidget(widget)
+        return block
+
+    def _add_setting_block(
+        self,
+        grid: QGridLayout,
+        row: int,
+        column: int,
+        label_text: str,
+        description: str,
+        widget: QWidget,
+        column_span: int = 1,
+    ) -> None:
+        block = self._create_setting_block(label_text, description, widget)
+        grid.addWidget(block, row, column, 1, column_span)
+
+    def _make_button_row(self, *buttons: QPushButton) -> QWidget:
+        row_widget = QWidget()
+        row_layout = QHBoxLayout(row_widget)
+        row_layout.setContentsMargins(0, 0, 0, 0)
+        row_layout.setSpacing(8)
+        for button in buttons:
+            row_layout.addWidget(button)
+        row_layout.addStretch(1)
+        return row_widget
 
     def pick_folder(self):
         folder = QFileDialog.getExistingDirectory(self, "Choose default download folder", self.download_folder.text())
@@ -402,7 +541,6 @@ class SettingsPage(QWidget):
         s.ask_before_receiving = self.ask_before.isChecked()
         s.auto_open_received_folder = self.auto_open.isChecked()
         s.remember_last_folders = self.remember_last.isChecked()
-        s.theme_mode = normalize_theme_mode(self.theme_mode.currentData(), s.dark_mode)
         s.accent_color = self.accent.currentText()
         s.relay_mode = self.relay_mode.currentText()
         s.custom_relay = self.custom_relay.text().strip()
@@ -414,20 +552,12 @@ class SettingsPage(QWidget):
         apply_theme(self.app, s)
         self.context.settings_service.save(s)
         self.context.log_service.prune_old_logs(s.log_retention_days)
-        self.refresh_theme_mode_control()
         self.refresh_account_section()
         self.refresh_debug_controls()
         self.settings_changed.emit()
 
     def refresh_theme_mode_control(self) -> None:
-        settings = self.context.settings_service.get()
-        mode = normalize_theme_mode(settings.theme_mode, settings.dark_mode)
-        index = self.theme_mode.findData(mode)
-        if index < 0:
-            return
-        blocker = QSignalBlocker(self.theme_mode)
-        self.theme_mode.setCurrentIndex(index)
-        del blocker
+        return
 
     def delete_binary(self):
         path_text = self.binary_path.text().strip()
