@@ -73,8 +73,12 @@ def apply_theme(app, settings: AppSettings) -> None:
             "pressed": "#1a2a3f",
             "success": "#49d59e",
             "danger": "#ff6f6f",
-            "theme_track": "rgba(11, 17, 26, 0.62)",
-            "theme_border": "#2b3a50",
+            "theme_shell": "rgba(28, 39, 57, 0.78)",
+            "theme_shell_border": "rgba(166, 186, 214, 0.12)",
+            "theme_track": "rgba(10, 15, 24, 0.88)",
+            "theme_border": "rgba(166, 186, 214, 0.10)",
+            "theme_button_hover": "rgba(255, 255, 255, 0.045)",
+            "theme_button_pressed": "rgba(255, 255, 255, 0.07)",
         }
         accent_gradient = "qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #4f2a90, stop:0.55 #8c45ff, stop:1 #f58bc6)"
         accent_gradient_soft = "qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 rgba(79,42,144,140), stop:1 rgba(245,139,198,140))"
@@ -94,8 +98,12 @@ def apply_theme(app, settings: AppSettings) -> None:
             "pressed": "#dfebf8",
             "success": "#1f9768",
             "danger": "#c23d3d",
-            "theme_track": "rgba(255, 255, 255, 0.9)",
-            "theme_border": "#d6deea",
+            "theme_shell": "rgba(255, 255, 255, 0.96)",
+            "theme_shell_border": "rgba(124, 144, 168, 0.16)",
+            "theme_track": "rgba(244, 247, 252, 0.96)",
+            "theme_border": "rgba(124, 144, 168, 0.12)",
+            "theme_button_hover": "rgba(89, 108, 132, 0.08)",
+            "theme_button_pressed": "rgba(89, 108, 132, 0.12)",
         }
         accent_gradient = "qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #6a45cc, stop:0.6 #9b5cff, stop:1 #e873b4)"
         accent_gradient_soft = "qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 rgba(106,69,204,90), stop:1 rgba(232,115,180,90))"
@@ -126,27 +134,32 @@ def apply_theme(app, settings: AppSettings) -> None:
         QWidget#SidebarFooterCluster {{
             background: transparent;
         }}
+        QFrame#SidebarThemeSwitcher {{
+            background: {palette['theme_shell']};
+            border: 1px solid {palette['theme_shell_border']};
+            border-radius: 24px;
+        }}
         QFrame#SidebarThemeTrack {{
             background: {palette['theme_track']};
             border: 1px solid {palette['theme_border']};
-            border-radius: 22px;
+            border-radius: 20px;
         }}
         QPushButton#SidebarThemeButton {{
-            min-width: 40px;
-            max-width: 40px;
-            min-height: 40px;
-            max-height: 40px;
+            min-width: 44px;
+            max-width: 44px;
+            min-height: 44px;
+            max-height: 44px;
             padding: 0;
             border: 0;
-            border-radius: 20px;
+            border-radius: 22px;
             background: transparent;
         }}
         QPushButton#SidebarThemeButton:hover {{
-            background: transparent;
+            background: {palette['theme_button_hover']};
             border: 0;
         }}
         QPushButton#SidebarThemeButton:pressed {{
-            background: transparent;
+            background: {palette['theme_button_pressed']};
             border: 0;
         }}
         QPushButton#SidebarThemeButton:checked {{

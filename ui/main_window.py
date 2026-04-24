@@ -344,8 +344,8 @@ class MainWindow(QMainWindow):
         section = QWidget()
         section.setObjectName("SidebarFooterCluster")
         layout = QVBoxLayout(section)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(10)
+        layout.setContentsMargins(0, 4, 0, 0)
+        layout.setSpacing(12)
         layout.addWidget(self.theme_switcher, 0, Qt.AlignmentFlag.AlignHCenter)
         layout.addWidget(self.sidebar_footer)
         return section

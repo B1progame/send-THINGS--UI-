@@ -6,7 +6,7 @@ from pathlib import Path
 from PySide6.QtCore import QByteArray, QEvent, QEasingCurve, QRect, QRectF, QSize, QSignalBlocker, Qt, QVariantAnimation, Signal
 from PySide6.QtGui import QColor, QIcon, QLinearGradient, QPainter, QPen, QPixmap
 from PySide6.QtSvg import QSvgRenderer
-from PySide6.QtWidgets import QButtonGroup, QFrame, QHBoxLayout, QPushButton, QWidget
+from PySide6.QtWidgets import QButtonGroup, QFrame, QHBoxLayout, QPushButton, QSizePolicy, QWidget
 
 from ui.theme import THEME_DARK, THEME_LIGHT, THEME_MODE_OPTIONS, THEME_SYSTEM, normalize_theme_mode
 
@@ -31,6 +31,11 @@ class ThemeSwitcherIndicator(QWidget):
         rect = QRectF(self.rect()).adjusted(0.5, 0.5, -0.5, -0.5)
         radius = min(rect.width(), rect.height()) / 2.0
 
+        shadow_rect = rect.adjusted(0.0, 1.25, 0.0, 1.25)
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(QColor(7, 12, 20, 34 if self._dark_mode else 18))
+        painter.drawRoundedRect(shadow_rect, radius, radius)
+
         gradient = QLinearGradient(rect.left(), rect.top(), rect.right(), rect.bottom())
         if self._dark_mode:
             gradient.setColorAt(0.0, QColor(96, 58, 164, 214))
@@ -46,6 +51,15 @@ class ThemeSwitcherIndicator(QWidget):
         painter.setBrush(gradient)
         painter.setPen(QPen(border, 1))
         painter.drawRoundedRect(rect, radius, radius)
+
+        highlight = QRectF(rect).adjusted(1.25, 1.1, -1.25, -rect.height() * 0.42)
+        highlight_radius = max(4.0, radius - 2.0)
+        highlight_gradient = QLinearGradient(highlight.left(), highlight.top(), highlight.left(), highlight.bottom())
+        highlight_gradient.setColorAt(0.0, QColor(255, 255, 255, 58 if self._dark_mode else 76))
+        highlight_gradient.setColorAt(1.0, QColor(255, 255, 255, 0))
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(highlight_gradient)
+        painter.drawRoundedRect(highlight, highlight_radius, highlight_radius)
 
 
 class ThemeSwitcher(QFrame):
@@ -66,16 +80,18 @@ class ThemeSwitcher(QFrame):
         }
 
         self.setObjectName("SidebarThemeSwitcher")
+        self.setFixedSize(188, 68)
+        self.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
         shell_layout = QHBoxLayout(self)
-        shell_layout.setContentsMargins(0, 0, 0, 0)
+        shell_layout.setContentsMargins(4, 4, 4, 4)
         shell_layout.setSpacing(0)
 
         self.track = QFrame()
         self.track.setObjectName("SidebarThemeTrack")
         track_layout = QHBoxLayout(self.track)
-        track_layout.setContentsMargins(6, 6, 6, 6)
-        track_layout.setSpacing(6)
-        shell_layout.addWidget(self.track, 0, Qt.AlignmentFlag.AlignCenter)
+        track_layout.setContentsMargins(10, 7, 10, 7)
+        track_layout.setSpacing(8)
+        shell_layout.addWidget(self.track)
 
         self.indicator = ThemeSwitcherIndicator(self.track, self._dark_mode)
         self.indicator.lower()
@@ -84,6 +100,7 @@ class ThemeSwitcher(QFrame):
         self.group = QButtonGroup(self)
         self.group.setExclusive(True)
 
+        track_layout.addStretch(1)
         for theme_key, label in THEME_MODE_OPTIONS:
             button = QPushButton()
             button.setObjectName("SidebarThemeButton")
@@ -91,13 +108,14 @@ class ThemeSwitcher(QFrame):
             button.setCursor(Qt.CursorShape.PointingHandCursor)
             button.setToolTip(f"{label} theme")
             button.setAccessibleName(f"{label} theme")
-            button.setFixedSize(40, 40)
-            button.setIconSize(QSize(18, 18))
+            button.setFixedSize(44, 44)
+            button.setIconSize(QSize(20, 20))
             button.clicked.connect(lambda _checked=False, option=theme_key: self._handle_button_click(option))
             track_layout.addWidget(button)
             self.group.addButton(button)
             button.installEventFilter(self)
             self.buttons[theme_key] = button
+        track_layout.addStretch(1)
 
         self.track.installEventFilter(self)
         self.set_dark_mode(self._dark_mode)
@@ -149,7 +167,7 @@ class ThemeSwitcher(QFrame):
         self.set_theme_mode(normalized, animated=True, emit_signal=True)
 
     def _refresh_icons(self) -> None:
-        active_color = "#ffffff" if self._dark_mode else "#1d2736"
+        active_color = "#fbfcff" if self._dark_mode else "#152131"
         inactive_color = "#9fb0c8" if self._dark_mode else "#5f7186"
         for option, button in self.buttons.items():
             color = active_color if option == self._theme_mode else inactive_color
@@ -162,10 +180,14 @@ class ThemeSwitcher(QFrame):
             self._svg_cache[icon_path] = svg_text
 
         renderer = QSvgRenderer(QByteArray(svg_text.replace("currentColor", color).encode("utf-8")))
-        pixmap = QPixmap(20, 20)
+        logical_size = 20
+        device_ratio = 2.0
+        pixmap = QPixmap(round(logical_size * device_ratio), round(logical_size * device_ratio))
+        pixmap.setDevicePixelRatio(device_ratio)
         pixmap.fill(Qt.GlobalColor.transparent)
         painter = QPainter(pixmap)
-        renderer.render(painter)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        renderer.render(painter, QRectF(0, 0, logical_size, logical_size))
         painter.end()
         return QIcon(pixmap)
 
