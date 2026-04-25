@@ -398,6 +398,7 @@ class MainWindow(QMainWindow):
                 selection_model.clearCurrentIndex()
         self.nav.clearFocus()
         self.nav.viewport().update()
+        QWidget.update(self.nav)
 
     def _on_nav_row_changed(self, index: int):
         if index < 0:
@@ -431,8 +432,6 @@ class MainWindow(QMainWindow):
         self._sync_footer_buttons(name)
         self._refresh_sidebar_icons()
         self._sync_nav_indicator(animated=animated)
-        if name in self.footer_buttons:
-            QTimer.singleShot(0, lambda: self._sync_nav_indicator(animated=False))
 
     def _update_page_chrome(self, name: str):
         self.header_title.setText(name or "CrocDrop")
