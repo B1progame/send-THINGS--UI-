@@ -9,8 +9,10 @@ from pathlib import Path
 from PySide6.QtCore import QObject, Signal
 
 from models.transfer import TransferRecord
+from services.sevenzip_service import PreparedArchive, SevenZipServiceError
 from services.transfer_parser import TransferOutputParser
 from utils.codegen import generate_code_phrase
+from utils.transfer_code import COMPRESSION_7ZIP, build_share_code, parse_share_code
 
 
 class TransferRuntime(QObject):
@@ -66,6 +68,7 @@ class TransferRuntime(QObject):
 class ActiveTransfer:
     record: TransferRecord
     runtime: TransferRuntime
+    prepared_archive: PreparedArchive | None = None
 
 
 @dataclass(slots=True)
@@ -80,9 +83,10 @@ class TransferService(QObject):
     transfer_finished = Signal(str, str)
     next_code_ready = Signal(str, str, str)  # transfer_id, code, expires_at_iso
 
-    def __init__(self, croc_manager, history_service, settings_service, log_service):
+    def __init__(self, croc_manager, sevenzip_service, history_service, settings_service, log_service):
         super().__init__()
         self.croc_manager = croc_manager
+        self.sevenzip_service = sevenzip_service
         self.history_service = history_service
         self.settings_service = settings_service
         self.log = log_service.get_logger("transfer")
@@ -96,14 +100,42 @@ class TransferService(QObject):
             return active.record
         return self.history_service.get_record(transfer_id)
 
-    def start_send(self, paths: list[str], code_phrase: str = "", direction: str = "send") -> TransferRecord:
+    def start_send(
+        self,
+        paths: list[str],
+        code_phrase: str = "",
+        direction: str = "send",
+        compress_7zip: bool = False,
+    ) -> TransferRecord:
         active_profile = (self.settings_service.get().current_profile or "guest").strip() or "guest"
-        if not code_phrase.strip():
+        base_code = code_phrase.strip()
+        if not base_code:
             reserved = self._take_reserved_code(active_profile)
-            code_phrase = reserved if reserved else generate_code_phrase(active_profile)
-        process = self.croc_manager.launch_send(paths=paths, code_phrase=code_phrase)
+            base_code = reserved if reserved else generate_code_phrase(active_profile)
+
+        prepared_archive: PreparedArchive | None = None
+        effective_paths = list(paths)
+        compression_mode = ""
+        archive_name = ""
+        if compress_7zip:
+            compression_level = self.settings_service.get().sevenzip_compression_level
+            prepared_archive = self.sevenzip_service.create_send_archive(paths, compression_level=compression_level)
+            effective_paths = [str(prepared_archive.archive_path)]
+            compression_mode = COMPRESSION_7ZIP
+            archive_name = prepared_archive.archive_name
+
+        share_code = build_share_code(base_code, compression_mode=compression_mode, archive_name=archive_name)
+        try:
+            process = self.croc_manager.launch_send(paths=effective_paths, code_phrase=base_code)
+        except Exception:
+            self.sevenzip_service.cleanup_prepared_archive(prepared_archive)
+            raise
+
         record = TransferRecord(direction=direction, source_paths=paths, relay=self.settings_service.get().relay_mode)
-        record.code_phrase = code_phrase
+        record.code_phrase = share_code
+        record.connection_code = base_code
+        record.compression_mode = compression_mode
+        record.archive_name = archive_name
         record.croc_version = self.croc_manager.get_version(Path(self.croc_manager.detect_binary().path))
         self.history_service.add(record)
         self.history_service.mark_started(record)
@@ -113,18 +145,29 @@ class TransferService(QObject):
 
         runtime = TransferRuntime(record.transfer_id, process, self.parser)
         self._wire_runtime(record, runtime)
-        self.active[record.transfer_id] = ActiveTransfer(record=record, runtime=runtime)
+        self.active[record.transfer_id] = ActiveTransfer(record=record, runtime=runtime, prepared_archive=prepared_archive)
         self.transfer_updated.emit(record.transfer_id)
         runtime.start()
         return record
 
     def start_receive(self, code_phrase: str, destination: str, overwrite: bool, direction: str = "receive") -> TransferRecord:
-        process = self.croc_manager.launch_receive(code_phrase=code_phrase, destination=destination, overwrite=overwrite)
+        parsed = parse_share_code(code_phrase)
+        if not parsed.connection_code:
+            raise ValueError("Missing croc code phrase.")
+
+        process = self.croc_manager.launch_receive(
+            code_phrase=parsed.connection_code,
+            destination=destination,
+            overwrite=overwrite,
+        )
         record = TransferRecord(
             direction=direction,
             source_paths=[],
             destination_folder=destination,
-            code_phrase=code_phrase,
+            code_phrase=parsed.share_code,
+            connection_code=parsed.connection_code,
+            compression_mode=parsed.compression_mode,
+            archive_name=parsed.archive_name,
             relay=self.settings_service.get().relay_mode,
         )
         record.croc_version = self.croc_manager.get_version(Path(self.croc_manager.detect_binary().path))
@@ -182,6 +225,7 @@ class TransferService(QObject):
         self.transfer_updated.emit(transfer_id)
 
     def _on_finished(self, record: TransferRecord, transfer_id: str, exit_code: int) -> None:
+        active = self.active.get(transfer_id)
         if transfer_id not in self.active and record.status == "canceled":
             return
         no_files_transferred = any("no files transferred" in line.lower() for line in record.output_excerpt[-80:])
@@ -194,21 +238,34 @@ class TransferService(QObject):
             record.error_message = "No files transferred (likely destination collision or skipped write)."
         if room_not_ready and not record.error_message:
             record.error_message = "Receive session is no longer active. Ask sender for a new code."
-        if status == "completed":
-            done_line = "[system] DONE"
-            record.output_excerpt.append(done_line)
-            self.transfer_output.emit(transfer_id, done_line)
-            self._auto_remember_device(record)
-        self.history_service.mark_finished(record, status=status, error=record.error_message)
-        self.transfer_finished.emit(transfer_id, status)
-        self.transfer_updated.emit(transfer_id)
-        self.active.pop(transfer_id, None)
+
+        try:
+            if status == "completed" and record.direction in {"receive", "selftest-receive"} and record.compression_mode == COMPRESSION_7ZIP:
+                try:
+                    self._auto_extract_received_archive(record, transfer_id)
+                except SevenZipServiceError as exc:
+                    status = "failed"
+                    record.error_message = str(exc)
+                    self._append_system_line(record, transfer_id, f"[system] Auto-extract failed: {exc}")
+
+            if status == "completed":
+                self._append_system_line(record, transfer_id, "[system] DONE")
+                self._auto_remember_device(record)
+
+            self.history_service.mark_finished(record, status=status, error=record.error_message)
+            self.transfer_finished.emit(transfer_id, status)
+            self.transfer_updated.emit(transfer_id)
+        finally:
+            if active is not None and active.prepared_archive is not None:
+                self.sevenzip_service.cleanup_prepared_archive(active.prepared_archive)
+            self.active.pop(transfer_id, None)
 
     def cancel(self, transfer_id: str) -> None:
         active = self.active.get(transfer_id)
         if not active:
             return
         active.runtime.cancel()
+        self.sevenzip_service.cleanup_prepared_archive(active.prepared_archive)
         self.history_service.mark_finished(active.record, status="canceled", error="Canceled by user")
         self.transfer_finished.emit(transfer_id, "canceled")
         self.active.pop(transfer_id, None)
@@ -219,7 +276,12 @@ class TransferService(QObject):
         if not record:
             return None
         if record.direction in ("send", "selftest-send"):
-            return self.start_send(paths=record.source_paths, code_phrase="", direction=record.direction)
+            return self.start_send(
+                paths=record.source_paths,
+                code_phrase="",
+                direction=record.direction,
+                compress_7zip=record.compression_mode == COMPRESSION_7ZIP,
+            )
         if record.direction in ("receive", "selftest-receive") and record.code_phrase:
             return self.start_receive(
                 code_phrase=record.code_phrase,
@@ -252,7 +314,7 @@ class TransferService(QObject):
             self._reserved_codes.pop(profile, None)
 
     def _auto_remember_device(self, record: TransferRecord) -> None:
-        code = (record.code_phrase or "").strip()
+        code = (record.connection_code or record.code_phrase or "").strip()
         if not code:
             return
         settings = self.settings_service.get()
@@ -264,3 +326,40 @@ class TransferService(QObject):
         # App-level convenience only: this alias is inferred from code text, not cryptographic identity.
         settings.trusted_devices[code] = f"Auto: {peer_label}"
         self.settings_service.save(settings)
+
+    def _auto_extract_received_archive(self, record: TransferRecord, transfer_id: str) -> None:
+        archive_path = self._resolve_received_archive(record)
+        self._append_system_line(record, transfer_id, f"[system] Auto-extracting {archive_path.name} with temporary 7-Zip CLI...")
+        self.sevenzip_service.extract_archive(archive_path=archive_path, destination=Path(record.destination_folder))
+        record.auto_extracted = True
+        try:
+            archive_path.unlink()
+        except OSError as exc:
+            self.log.warning("Failed to delete extracted archive %s: %s", archive_path, exc)
+            self._append_system_line(
+                record,
+                transfer_id,
+                f"[system] Extracted successfully, but could not delete {archive_path.name}.",
+            )
+        else:
+            self._append_system_line(record, transfer_id, f"[system] Auto-extracted {archive_path.name} into {record.destination_folder}")
+
+    def _resolve_received_archive(self, record: TransferRecord) -> Path:
+        destination = Path(record.destination_folder)
+        archive_name = record.archive_name.strip()
+        if archive_name:
+            expected = destination / archive_name
+            if expected.exists():
+                return expected
+            raise SevenZipServiceError(
+                f"Expected compressed file '{archive_name}' was not found in {destination} after download."
+            )
+
+        candidates = sorted(destination.glob("*.7z"), key=lambda item: item.stat().st_mtime, reverse=True)
+        if len(candidates) == 1:
+            return candidates[0]
+        raise SevenZipServiceError("Received compressed transfer, but the downloaded .7z file could not be identified.")
+
+    def _append_system_line(self, record: TransferRecord, transfer_id: str, line: str) -> None:
+        record.output_excerpt.append(line)
+        self.transfer_output.emit(transfer_id, line)

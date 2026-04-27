@@ -120,6 +120,12 @@ class SettingsPage(QWidget):
         ("Orange", "#ffad4a"),
     )
 
+    SEVENZIP_LEVEL_OPTIONS: tuple[tuple[str, int], ...] = (
+        ("Fast (1)", 1),
+        ("Balanced (5)", 5),
+        ("Maximum (9)", 9),
+    )
+
     CATEGORY_OPTIONS: tuple[tuple[str, str], ...] = (
         ("general", "General"),
         ("transfers", "Transfers"),
@@ -152,6 +158,7 @@ class SettingsPage(QWidget):
         self._sync_relay_controls()
         self._sync_bandwidth_controls()
         self._refresh_binary_status()
+        self._refresh_sevenzip_status()
         self._refresh_status_pills()
         self._switch_category("general")
         self._capture_saved_settings_snapshot()
@@ -447,10 +454,53 @@ class SettingsPage(QWidget):
             SettingsRow("Auto-download croc", "Fetch croc automatically when a binary is missing.", self.auto_download)
         )
 
+        self.sevenzip_status = StatusPill()
+        self.sevenzip_status_label = QLabel()
+        self.sevenzip_status_label.setObjectName("SettingsDescription")
+        sevenzip_status_widget = QWidget()
+        sevenzip_status_layout = QHBoxLayout(sevenzip_status_widget)
+        sevenzip_status_layout.setContentsMargins(0, 0, 0, 0)
+        sevenzip_status_layout.setSpacing(8)
+        sevenzip_status_layout.addWidget(self.sevenzip_status)
+        sevenzip_status_layout.addWidget(self.sevenzip_status_label, 1)
+
+        self.sevenzip_install_btn = QPushButton("Install 7-Zip CLI")
+        self.sevenzip_install_btn.setObjectName("SecondaryButton")
+        self.sevenzip_uninstall_btn = QPushButton("Uninstall 7-Zip CLI")
+        self.sevenzip_uninstall_btn.setObjectName("DangerButton")
+        sevenzip_actions = QWidget()
+        sevenzip_actions_layout = QHBoxLayout(sevenzip_actions)
+        sevenzip_actions_layout.setContentsMargins(0, 0, 0, 0)
+        sevenzip_actions_layout.setSpacing(8)
+        sevenzip_actions_layout.addWidget(self.sevenzip_install_btn)
+        sevenzip_actions_layout.addWidget(self.sevenzip_uninstall_btn)
+        sevenzip_actions_layout.addStretch(1)
+
+        self.sevenzip_level = QComboBox()
+        for label, value in self.SEVENZIP_LEVEL_OPTIONS:
+            self.sevenzip_level.addItem(label, value)
+
+        sevenzip_card = SettingsCard("7-Zip", "Manage the command-line archive tool used for compressed sends.")
+        sevenzip_card.add_widget(
+            SettingsRow(
+                "Install status",
+                "Installed mode reuses a local CLI. If not installed, CrocDrop downloads a temporary one and deletes it after use.",
+                sevenzip_status_widget,
+            )
+        )
+        sevenzip_card.add_widget(
+            SettingsRow(
+                "Compression strength",
+                "Controls how hard CrocDrop compresses when the send page 7-Zip toggle is enabled.",
+                self.sevenzip_level,
+            )
+        )
+        sevenzip_card.add_widget(sevenzip_actions)
+
         return self._build_subpage(
             "Connection",
-            "Relay routing and croc binary controls.",
-            [relay_card, binary_card],
+            "Relay routing, croc binary controls, and 7-Zip options.",
+            [relay_card, binary_card, sevenzip_card],
         )
 
     def _build_profiles_page(self) -> QWidget:
@@ -628,6 +678,8 @@ class SettingsPage(QWidget):
         self.binary_path_row.primary_button.clicked.connect(self.pick_binary)
         if self.binary_path_row.extra_button is not None:
             self.binary_path_row.extra_button.clicked.connect(self.delete_binary)
+        self.sevenzip_install_btn.clicked.connect(self.install_sevenzip)
+        self.sevenzip_uninstall_btn.clicked.connect(self.uninstall_sevenzip)
 
         self.save_btn.clicked.connect(self.save)
         self.update_btn.clicked.connect(self.update_app)
@@ -650,6 +702,7 @@ class SettingsPage(QWidget):
         self.custom_relay.textChanged.connect(lambda _text: self._on_relay_changed())
         self.binary_path_row.line_edit.textChanged.connect(lambda _text: self._on_binary_controls_changed())
         self.auto_download.toggled.connect(lambda _checked: self._on_binary_controls_changed())
+        self.sevenzip_level.currentIndexChanged.connect(lambda _index: self._mark_dirty())
 
         self.upload_unlimited.toggled.connect(lambda _checked: self._on_bandwidth_changed())
         self.upload_limit.textChanged.connect(lambda _text: self._on_bandwidth_changed())
@@ -710,6 +763,7 @@ class SettingsPage(QWidget):
             self.custom_relay.setText(settings.custom_relay)
             self.binary_path_row.line_edit.setText(settings.croc_binary_path)
             self.auto_download.setChecked(settings.auto_download_croc)
+            self._set_sevenzip_level(settings.sevenzip_compression_level)
 
             self.log_retention.setValue(settings.log_retention_days)
 
@@ -737,6 +791,7 @@ class SettingsPage(QWidget):
         updated["custom_relay"] = self.custom_relay.text().strip()
         updated["croc_binary_path"] = self.binary_path_row.line_edit.text().strip()
         updated["auto_download_croc"] = self.auto_download.isChecked()
+        updated["sevenzip_compression_level"] = self._selected_sevenzip_level()
         updated["upload_limit_kbps"] = self._read_bandwidth_limit_kbps(self.upload_unlimited, self.upload_limit)
         updated["download_limit_kbps"] = self._read_bandwidth_limit_kbps(self.download_unlimited, self.download_limit)
         updated["log_retention_days"] = self.log_retention.value()
@@ -756,6 +811,7 @@ class SettingsPage(QWidget):
             "custom_relay": settings.custom_relay.strip(),
             "croc_binary_path": settings.croc_binary_path.strip(),
             "auto_download_croc": bool(settings.auto_download_croc),
+            "sevenzip_compression_level": int(settings.sevenzip_compression_level),
             "upload_limit_kbps": int(settings.upload_limit_kbps),
             "download_limit_kbps": int(settings.download_limit_kbps),
             "log_retention_days": int(settings.log_retention_days),
@@ -772,6 +828,7 @@ class SettingsPage(QWidget):
             "custom_relay": self.custom_relay.text().strip(),
             "croc_binary_path": self.binary_path_row.line_edit.text().strip(),
             "auto_download_croc": self.auto_download.isChecked(),
+            "sevenzip_compression_level": self._selected_sevenzip_level(),
             "upload_limit_kbps": self._read_bandwidth_limit_kbps(self.upload_unlimited, self.upload_limit),
             "download_limit_kbps": self._read_bandwidth_limit_kbps(self.download_unlimited, self.download_limit),
             "log_retention_days": self.log_retention.value(),
@@ -931,6 +988,31 @@ class SettingsPage(QWidget):
             self.binary_status.setText("Missing path")
             self.binary_status_label.setText("Set a binary path or re-enable auto-download.")
 
+    def _refresh_sevenzip_status(self) -> None:
+        status = self.context.sevenzip_service.status()
+        installed = bool(status["installed"])
+        path = str(status["path"])
+        if installed:
+            self.sevenzip_status.set_variant("success")
+            self.sevenzip_status.setText("Installed")
+            self.sevenzip_status_label.setText(f"Using managed CLI at {path}")
+        else:
+            self.sevenzip_status.set_variant("accent")
+            self.sevenzip_status.setText("Temporary")
+            self.sevenzip_status_label.setText("Not installed. CrocDrop will fetch a temporary CLI and delete it after compressed transfers.")
+        self.sevenzip_install_btn.setEnabled(not installed)
+        self.sevenzip_uninstall_btn.setEnabled(installed)
+
+    def _set_sevenzip_level(self, level: int) -> None:
+        normalized = max(0, min(9, int(level)))
+        index = next((i for i in range(self.sevenzip_level.count()) if int(self.sevenzip_level.itemData(i)) == normalized), -1)
+        if index >= 0:
+            self.sevenzip_level.setCurrentIndex(index)
+
+    def _selected_sevenzip_level(self) -> int:
+        data = self.sevenzip_level.currentData()
+        return int(data) if data is not None else 9
+
     def _on_accent_changed(self) -> None:
         self._apply_pending_accent()
         self._refresh_status_pills()
@@ -978,6 +1060,7 @@ class SettingsPage(QWidget):
         self.refresh_account_section()
         self.refresh_debug_controls()
         self._refresh_binary_status()
+        self._refresh_sevenzip_status()
         self._refresh_status_pills()
         self._set_dirty(False)
         self.settings_changed.emit()
@@ -1012,6 +1095,33 @@ class SettingsPage(QWidget):
             self.settings_changed.emit()
         else:
             QMessageBox.warning(self, "Delete Croc Binary", message)
+
+    def install_sevenzip(self):
+        try:
+            path = self.context.sevenzip_service.install_cli()
+        except Exception as exc:
+            QMessageBox.warning(self, "Install 7-Zip CLI", str(exc))
+            return
+        self._refresh_sevenzip_status()
+        QMessageBox.information(self, "Install 7-Zip CLI", f"Installed 7-Zip CLI at:\n{path}")
+
+    def uninstall_sevenzip(self):
+        answer = QMessageBox.question(
+            self,
+            "Uninstall 7-Zip CLI",
+            "Remove the installed 7-Zip CLI?\n\nCompressed transfers will still work by downloading a temporary copy when needed.",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No,
+        )
+        if answer != QMessageBox.Yes:
+            return
+
+        ok, message = self.context.sevenzip_service.uninstall_cli()
+        self._refresh_sevenzip_status()
+        if ok:
+            QMessageBox.information(self, "Uninstall 7-Zip CLI", message)
+        else:
+            QMessageBox.warning(self, "Uninstall 7-Zip CLI", message)
 
     def refresh_account_section(self):
         settings = self.context.settings_service.get()

@@ -17,6 +17,7 @@ class AppSettings:
     custom_relay: str = ""
     croc_binary_path: str = ""
     auto_download_croc: bool = True
+    sevenzip_compression_level: int = 9
     upload_limit_kbps: int = 0
     download_limit_kbps: int = 0
     log_retention_days: int = 14

@@ -125,17 +125,26 @@ class ReceivePage(QWidget):
                 "Note: existing files with the same name may be skipped by croc in non-overwrite mode."
             )
 
-        record = self.context.transfer_service.start_receive(
-            code_phrase=code,
-            destination=destination,
-            overwrite=overwrite,
-        )
+        try:
+            record = self.context.transfer_service.start_receive(
+                code_phrase=code,
+                destination=destination,
+                overwrite=overwrite,
+            )
+        except Exception as exc:
+            QMessageBox.critical(self, "Receive failed", str(exc))
+            return
         self.attempted_codes.add(code)
         self.current_transfer_id = record.transfer_id
         self.pending_output_lines.clear()
         self.output.clear()
         self.progress.setValue(0)
         self.output.appendPlainText(f"Started receive {record.transfer_id}")
+        if record.compression_mode == "7zip":
+            self.output.appendPlainText(
+                f"[system] Compression metadata detected. "
+                f"{record.archive_name or 'The incoming .7z archive'} will be auto-extracted after download."
+            )
 
     def on_transfer_output(self, transfer_id: str, line: str):
         if transfer_id != self.current_transfer_id:

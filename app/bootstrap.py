@@ -13,6 +13,7 @@ from services.croc_manager import CrocManager
 from services.debug_service import DebugService
 from services.history_service import HistoryService
 from services.log_service import LogService
+from services.sevenzip_service import SevenZipService
 from services.settings_service import SettingsService
 from services.transfer_service import TransferService
 from services.update_service import UpdateService
@@ -27,6 +28,7 @@ class AppContext:
     settings_service: SettingsService
     history_service: HistoryService
     croc_manager: CrocManager
+    sevenzip_service: SevenZipService
     transfer_service: TransferService
     debug_service: DebugService
     update_service: UpdateService
@@ -77,8 +79,10 @@ def build_app(debug_peer: bool = False) -> tuple[QApplication, MainWindow]:
     log_service = LogService(debug_enabled=settings.debug_mode)
     history_service = HistoryService(log_service)
     croc_manager = CrocManager(log_service=log_service, settings_service=settings_service)
+    sevenzip_service = SevenZipService(log_service=log_service)
     transfer_service = TransferService(
         croc_manager=croc_manager,
+        sevenzip_service=sevenzip_service,
         history_service=history_service,
         settings_service=settings_service,
         log_service=log_service,
@@ -94,6 +98,7 @@ def build_app(debug_peer: bool = False) -> tuple[QApplication, MainWindow]:
         settings_service=settings_service,
         history_service=history_service,
         croc_manager=croc_manager,
+        sevenzip_service=sevenzip_service,
         transfer_service=transfer_service,
         debug_service=debug_service,
         update_service=update_service,

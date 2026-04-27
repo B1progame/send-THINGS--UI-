@@ -18,8 +18,12 @@ class TransferRecord:
     started_at: str = ""
     ended_at: str = ""
     code_phrase: str = ""
+    connection_code: str = ""
     source_paths: list[str] = field(default_factory=list)
     destination_folder: str = ""
+    compression_mode: str = ""
+    archive_name: str = ""
+    auto_extracted: bool = False
     bytes_total: int = 0
     bytes_done: int = 0
     speed_text: str = ""

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from PySide6.QtCore import QTimer
 from PySide6.QtGui import QGuiApplication
-from PySide6.QtWidgets import QFileDialog, QHBoxLayout, QLabel, QLineEdit, QMessageBox, QProgressBar, QPushButton, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QCheckBox, QFileDialog, QHBoxLayout, QLabel, QLineEdit, QMessageBox, QProgressBar, QPushButton, QVBoxLayout, QWidget
 
 from ui.components.common import Card, CollapsibleOutputSection, DropList, PageHeader
 
@@ -25,6 +25,8 @@ class SendPage(QWidget):
         picker = Card("Files and Folders")
         self.drop = DropList()
         picker.layout.addWidget(self.drop)
+        self.compress_toggle = QCheckBox("Compress with temporary 7-Zip and auto-extract on receive")
+        picker.layout.addWidget(self.compress_toggle)
 
         actions = QHBoxLayout()
         btn_file = QPushButton("Add Files")
@@ -115,7 +117,14 @@ class SendPage(QWidget):
         if not paths:
             QMessageBox.warning(self, "No files", "Add at least one file or folder")
             return
-        record = self.context.transfer_service.start_send(paths)
+        try:
+            record = self.context.transfer_service.start_send(
+                paths,
+                compress_7zip=self.compress_toggle.isChecked(),
+            )
+        except Exception as exc:
+            QMessageBox.critical(self, "Send failed", str(exc))
+            return
         self.current_transfer_id = record.transfer_id
         self.pending_output_lines.clear()
         self.output.clear()
@@ -125,6 +134,11 @@ class SendPage(QWidget):
         self.start_btn.setEnabled(False)
         self.cancel_btn.setEnabled(True)
         self.output.appendPlainText(f"Started transfer {record.transfer_id}")
+        if record.compression_mode == "7zip":
+            self.output.appendPlainText(
+                f"[system] Packed selection into {record.archive_name}. "
+                "The shared code includes auto-extract info for the receiver."
+            )
 
     def cancel_send(self):
         if not self.current_transfer_id:
